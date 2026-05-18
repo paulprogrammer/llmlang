@@ -16,7 +16,11 @@ as the developer.
 - **[Build Guide](./BUILD_GUIDE.md):** Instructions for compiling the Rust toolchain and LLVM dependencies.
 - **[MCP Server Guide](./MCP_GUIDE.md):** How to use the `llm-mcp` binary for structural codebase traversal.
 - **[Diagnostics](./DIAGNOSTICS.md):** Mapping of token-efficient error and warning codes (`E00x`, `W00x`).
+- **[Release Guide](./RELEASE_GUIDE.md):** Versioning strategy and automated release process.
 - **[License](./LICENSE):** GPLv3 with the `llmlang` Runtime Exception (Free to use, unrestricted output).
+
+## Versioning
+`llmlang` uses SemVer. Current version: **v0.1.0**
 
 ## Getting Started
 To compile and link a program in one command:
