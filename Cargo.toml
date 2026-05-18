@@ -10,3 +10,17 @@ pest = "2.7"
 pest_derive = "2.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+mcp-sdk-rs = "0.3.4"
+tokio = { version = "1.52.3", features = ["full"] }
+walkdir = "2.5.0"
+sha2 = "0.11.0"
+async-trait = "0.1"
+hex = "0.4.3"
+
+[[bin]]
+name = "llmlang"
+path = "src/main.rs"
+
+[[bin]]
+name = "llm-mcp"
+path = "src/bin/mcp_server.rs"

@@ -1,12 +1,12 @@
 use crate::lexer::{Token, Lexer};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize)]
 pub struct Param {
     pub name: String,
     pub expand: bool, // true if marked with !
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize)]
 pub enum Expr {
     Integer(i64),
     Float(f64),
@@ -26,6 +26,126 @@ pub enum Expr {
     Expand(String),                         // ! name (reference to expand param)
     Let(String, Box<Expr>, Box<Expr>),      // L name val body
     Import(String, String),                 // I module_alias symbol_name
+}
+
+impl Expr {
+    pub fn get_calls(&self) -> Vec<String> {
+        let mut calls = Vec::new();
+        self.collect_calls(&mut calls);
+        calls
+    }
+
+    fn collect_calls(&self, calls: &mut Vec<String>) {
+        match self {
+            Expr::BinaryOp(_, left, right) => {
+                left.collect_calls(calls);
+                right.collect_calls(calls);
+            }
+            Expr::Apply(func_expr, args) => {
+                if let Expr::Identifier(name) = &**func_expr {
+                    calls.push(name.clone());
+                }
+                func_expr.collect_calls(calls);
+                for arg in args {
+                    arg.collect_calls(calls);
+                }
+            }
+            Expr::Move(expr) | Expr::Borrow(expr) | Expr::MutBorrow(expr) => {
+                expr.collect_calls(calls);
+            }
+            Expr::Define(_, _, body, _) => {
+                body.collect_calls(calls);
+            }
+            Expr::If(cond, t, f) => {
+                cond.collect_calls(calls);
+                t.collect_calls(calls);
+                f.collect_calls(calls);
+            }
+            Expr::Let(_, val, body) => {
+                val.collect_calls(calls);
+                body.collect_calls(calls);
+            }
+            Expr::New(_, count) => {
+                count.collect_calls(calls);
+            }
+            Expr::Get(inst, _, idx) => {
+                inst.collect_calls(calls);
+                idx.collect_calls(calls);
+            }
+            Expr::Set(inst, _, idx, val) => {
+                inst.collect_calls(calls);
+                idx.collect_calls(calls);
+                val.collect_calls(calls);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn structural_fingerprint(&self) -> String {
+        let mut s = String::new();
+        self.collect_fingerprint(&mut s);
+        s
+    }
+
+    fn collect_fingerprint(&self, s: &mut String) {
+        match self {
+            Expr::Integer(_) => s.push_str("i"),
+            Expr::Float(_) => s.push_str("f"),
+            Expr::DeBruijn(n) => s.push_str(&format!("^{}", n)),
+            Expr::Identifier(_) => s.push_str("n"),
+            Expr::BinaryOp(tok, left, right) => {
+                s.push_str(&format!("{:?}", tok));
+                left.collect_fingerprint(s);
+                right.collect_fingerprint(s);
+            }
+            Expr::Apply(_, args) => {
+                s.push_str("@");
+                for arg in args {
+                    arg.collect_fingerprint(s);
+                }
+            }
+            Expr::Move(e) => { s.push_str(">"); e.collect_fingerprint(s); }
+            Expr::Borrow(e) => { s.push_str("&"); e.collect_fingerprint(s); }
+            Expr::MutBorrow(e) => { s.push_str("~"); e.collect_fingerprint(s); }
+            Expr::Define(_, params, body, _) => {
+                s.push_str(":");
+                for _ in params { s.push_str("p"); }
+                body.collect_fingerprint(s);
+            }
+            Expr::Shape(_, fields, _) => {
+                s.push_str("#");
+                for _ in fields { s.push_str("t"); }
+            }
+            Expr::New(_, count) => {
+                s.push_str("N");
+                count.collect_fingerprint(s);
+            }
+            Expr::Get(inst, _, idx) => {
+                s.push_str("G");
+                inst.collect_fingerprint(s);
+                idx.collect_fingerprint(s);
+            }
+            Expr::Set(inst, _, idx, val) => {
+                s.push_str("S");
+                inst.collect_fingerprint(s);
+                idx.collect_fingerprint(s);
+                val.collect_fingerprint(s);
+            }
+            Expr::If(c, t, f) => {
+                s.push_str("?");
+                c.collect_fingerprint(s);
+                t.collect_fingerprint(s);
+                f.collect_fingerprint(s);
+            }
+            Expr::Expand(_) => s.push_str("!"),
+            Expr::Let(_, val, body) => {
+                s.push_str("L");
+                val.collect_fingerprint(s);
+                body.collect_fingerprint(s);
+            }
+            Expr::Import(_, _) => s.push_str("I"),
+        }
+    }
 }
 
 pub struct Parser {

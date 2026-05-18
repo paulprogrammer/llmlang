@@ -134,6 +134,26 @@ fn test_positive_export_sig() {
 }
 
 #[test]
+fn test_positive_fingerprint() {
+    let input1 = ": f1 x + > ^0 1";
+    let input2 = ": f2 y + > ^0 1";
+    let input3 = ": f3 x * > ^0 2";
+
+    let ast1 = Parser::new(Lexer::new(input1)).parse_expr();
+    let ast2 = Parser::new(Lexer::new(input2)).parse_expr();
+    let ast3 = Parser::new(Lexer::new(input3)).parse_expr();
+
+    let fp1 = ast1.structural_fingerprint();
+    let fp2 = ast2.structural_fingerprint();
+    let fp3 = ast3.structural_fingerprint();
+
+    // f1 and f2 should have identical fingerprints despite name changes
+    assert_eq!(fp1, fp2);
+    // f3 should be different
+    assert_ne!(fp1, fp3);
+}
+
+#[test]
 fn test_positive_import() {
     let context = Context::create();
     let input = "I math sin\n: test x @ sin ^0";
