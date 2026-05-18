@@ -109,52 +109,52 @@ impl ServerHandler for LLMLangMCPHandler {
     async fn handle_method(&self, method: &str, params: Option<Value>) -> Result<Value, Error> {
         match method {
             "tools/list" => {
-                let tools = vec![
-                    Tool {
-                        name: "analyze_codebase".to_string(),
-                        description: "Indexes all .llm files in the given path".to_string(),
-                        input_schema: Some(ToolSchema {
-                            properties: Some(json!({
+                let tools = json!([
+                    {
+                        "name": "analyze_codebase",
+                        "description": "Indexes all .llm files in the given path",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
                                 "path": { "type": "string", "description": "Local path to the codebase" }
-                            })),
-                            required: Some(vec!["path".to_string()]),
-                        }),
-                        annotations: None,
+                            },
+                            "required": ["path"]
+                        }
                     },
-                    Tool {
-                        name: "search_symbols".to_string(),
-                        description: "Searches for functions or shapes by name".to_string(),
-                        input_schema: Some(ToolSchema {
-                            properties: Some(json!({
+                    {
+                        "name": "search_symbols",
+                        "description": "Searches for functions or shapes by name",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
                                 "query": { "type": "string" }
-                            })),
-                            required: Some(vec!["query".to_string()]),
-                        }),
-                        annotations: None,
+                            },
+                            "required": ["query"]
+                        }
                     },
-                    Tool {
-                        name: "find_callers".to_string(),
-                        description: "Finds all functions that call the given symbol".to_string(),
-                        input_schema: Some(ToolSchema {
-                            properties: Some(json!({
+                    {
+                        "name": "find_callers",
+                        "description": "Finds all functions that call the given symbol",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
                                 "symbol": { "type": "string" }
-                            })),
-                            required: Some(vec!["symbol".to_string()]),
-                        }),
-                        annotations: None,
+                            },
+                            "required": ["symbol"]
+                        }
                     },
-                    Tool {
-                        name: "structural_search".to_string(),
-                        description: "Finds functions with a similar AST structure".to_string(),
-                        input_schema: Some(ToolSchema {
-                            properties: Some(json!({
+                    {
+                        "name": "structural_search",
+                        "description": "Finds functions with a similar AST structure",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
                                 "function_name": { "type": "string" }
-                            })),
-                            required: Some(vec!["function_name".to_string()]),
-                        }),
-                        annotations: None,
-                    },
-                ];
+                            },
+                            "required": ["function_name"]
+                        }
+                    }
+                ]);
                 Ok(json!({ "tools": tools }))
             }
             "tools/call" => {
