@@ -32,8 +32,9 @@
 
 ## 6. Primitive Operations Syntax
 * **Composite Approach:** The language uses a hybrid syntax to balance extreme token efficiency with LLM pre-training alignment.
-* **ASCII Symbols for Core Logic:** Base operators (math, borrow, move, apply) are represented by single-character ASCII tokens (e.g., `+`, `>`, `&`). This guarantees 1 char = 1 token for the most frequent operations.
-* **Short Mnemonics for Built-ins:** Standard library functions and common structural built-ins use 3-to-4 letter ASCII mnemonics (e.g., `len`, `map`, `sys`).
+* **ASCII Symbols for Core Logic:** Base operators (math, borrow, move, apply, branch) are represented by single-character ASCII tokens (e.g., `+`, `>`, `&`, `@`, `?`). This guarantees 1 char = 1 token for the most frequent operations.
+* **Conditional Branching (`?`):** Implements `? cond true_branch false_branch`. Enforces linear stack consistency (both branches must leave the stack in the identical ownership state).
+* **Short Mnemonics for Built-ins:** Standard library functions and common structural built-ins use 3-to-4 letter ASCII mnemonics (e.g., `len`, `map`, `sys`, `new`, `get`, `set`).
 
 ## 7. Vector Search & MCP Integration
 * **Structural AST Embeddings:** The AST is inherently designed to be converted into structural embeddings. By vectorizing the sub-trees (the arrangement of operators, types, and data flow), an MCP service can index the "shape" of the logic.
@@ -44,4 +45,5 @@
 * **Implementation Language:** Rust (for memory safety, performance, and conceptual symmetry with the language's ownership model).
 * **Compiler Backend:** LLVM via the `inkwell` crate.
 * **Target Platforms:** Native Machine Code (x86_64, ARM) and WebAssembly (Wasm).
+* **Computational Power:** Turing Complete (achieved via conditional branching and recursive function calls).
 * **Parsing Strategy:** Hand-written Recursive Descent or PEG-based (using `pest`) to maintain absolute control over the dense, prefix-arity AST.

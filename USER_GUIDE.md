@@ -33,7 +33,8 @@ clang --target=wasm32 -nostdlib -Wl,--no-entry -Wl,--export-all output.ll -o out
 
 | Operation | Syntax | Description |
 | :--- | :--- | :--- |
-| **Apply** | `@ func arg` | Call a function. |
+| **Apply** | `@ func arg` | Call a function (recursive calls allowed). |
+| **Branch** | `? cond t f` | Conditional branch (phi-merge). |
 | **Move** | `> ^index` | Consume a variable (Linear Ownership). |
 | **Borrow** | `& ^index` | Read a variable without consuming. |
 | **De Bruijn** | `^0`, `^1` | Reference variables by scope depth. |
