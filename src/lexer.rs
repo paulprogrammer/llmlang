@@ -12,6 +12,7 @@ pub enum Token {
     Shape,     // #
     DeBruijn(usize), // ^0, ^1
     Question,  // ?
+    Bang,      // !
     New,       // new
     Get,       // get
     Set,       // set
@@ -56,6 +57,7 @@ impl Lexer {
             ':' => Token::Define,
             '#' => Token::Shape,
             '?' => Token::Question,
+            '!' => Token::Bang,
             '^' => self.lex_debruijn(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),

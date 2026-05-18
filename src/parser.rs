@@ -1,6 +1,12 @@
 use crate::lexer::{Token, Lexer};
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Param {
+    pub name: String,
+    pub expand: bool, // true if marked with !
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     Integer(i64),
     Float(f64),
@@ -11,12 +17,13 @@ pub enum Expr {
     Move(Box<Expr>),                       // > expr
     Borrow(Box<Expr>),                     // & expr
     MutBorrow(Box<Expr>),                  // ~ expr
-    Define(String, Vec<String>, Box<Expr>), // : name (args) body
+    Define(String, Vec<Param>, Box<Expr>), // : name (args) body
     Shape(String, Vec<String>),             // # name field1 field2 ...
     New(String, Box<Expr>),                 // new shape_name count
     Get(Box<Expr>, String, Box<Expr>),      // get instance field index
     Set(Box<Expr>, String, Box<Expr>, Box<Expr>), // set instance field index value
     If(Box<Expr>, Box<Expr>, Box<Expr>),    // ? cond true_branch false_branch
+    Expand(String),                         // ! name (reference to expand param)
 }
 
 pub struct Parser {
@@ -68,12 +75,6 @@ impl Parser {
                 self.consume(); // consume @
                 let func = self.parse_expr();
                 let mut args = Vec::new();
-                
-                // Read arguments based on function type/arity or a sentinel.
-                // Since our grammar is prefix-arity, we need a way to know when to stop.
-                // For this prototype, let's assume all user functions in @ take 2 args,
-                // OR we can add a stop token.
-                // Let's implement a stop token ',' for variable arity calls.
                 while self.current_token != Token::EOF && self.current_token != Token::Define && self.current_token != Token::Shape {
                      args.push(self.parse_expr());
                      if args.len() == 1 { break; } 
@@ -109,9 +110,22 @@ impl Parser {
                 self.consume();
                 if let Token::Identifier(name) = self.consume() {
                     let mut args = Vec::new();
-                    while let Token::Identifier(arg) = &self.current_token {
-                        args.push(arg.clone());
-                        self.consume();
+                    loop {
+                        match &self.current_token {
+                            Token::Identifier(arg_name) => {
+                                args.push(Param { name: arg_name.clone(), expand: false });
+                                self.consume();
+                            }
+                            Token::Bang => {
+                                self.consume();
+                                if let Token::Identifier(arg_name) = self.consume() {
+                                    args.push(Param { name: arg_name.clone(), expand: true });
+                                } else {
+                                    panic!("E002");
+                                }
+                            }
+                            _ => break,
+                        }
                     }
                     let body = self.parse_expr();
                     Expr::Define(name, args, Box::new(body))
@@ -155,6 +169,14 @@ impl Parser {
                 let true_branch = self.parse_expr();
                 let false_branch = self.parse_expr();
                 Expr::If(Box::new(cond), Box::new(true_branch), Box::new(false_branch))
+            }
+            Token::Bang => {
+                self.consume();
+                if let Token::Identifier(name) = self.consume() {
+                    Expr::Expand(name)
+                } else {
+                    panic!("E002");
+                }
             }
             Token::EOF => panic!("E000"),
             _ => panic!("E001"),
