@@ -64,8 +64,25 @@ jobs:
       run: |
         choco install llvm --version=22.1.0 -y
         $llvmPath = "C:\Program Files\LLVM"
-        "LLVM_SYS_221_PREFIX=$llvmPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-        "$llvmPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+        Add-Content -Path $env:GITHUB_ENV -Value "LLVM_SYS_221_PREFIX=$llvmPath" -Encoding UTF8
+        Add-Content -Path $env:GITHUB_PATH -Value "$llvmPath\bin" -Encoding UTF8
+
+    - name: Verify LLVM (Windows)
+      if: matrix.os == 'windows'
+      shell: powershell
+      run: |
+        $llvmPath = "C:\Program Files\LLVM"
+        if (Test-Path "$llvmPath\bin\llvm-config.exe") {
+          echo "Found llvm-config"
+          & "$llvmPath\bin\llvm-config.exe" --version
+        } else {
+          echo "llvm-config not found in $llvmPath\bin"
+          ls "$llvmPath\bin"
+        }
+        if (Test-Path "$llvmPath\lib") {
+          echo "Found lib dir"
+          ls "$llvmPath\lib\*.lib" | select -First 5
+        }
 
     - name: Install dependencies (Linux)
       if: matrix.os == 'linux'
