@@ -20,7 +20,7 @@ as the developer.
 - **[License](./LICENSE):** GPLv3 with the `llmlang` Runtime Exception (Free to use, unrestricted output).
 
 ## Versioning
-`llmlang` uses SemVer. Current version: **v0.1.0**
+`llmlang` uses SemVer. Current version: **v0.1.1**
 
 ## Getting Started
 To compile and link a program in one command:

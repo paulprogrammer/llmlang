@@ -7,7 +7,7 @@
 - **MINOR** version for adding functionality in a backwards-compatible manner (e.g., new operators, new MCP tools).
 - **PATCH** version for backwards-compatible bug fixes.
 
-Current Version: **v0.1.0**
+Current Version: **v0.1.1**
 
 ## 2. Release Process
 
@@ -20,8 +20,8 @@ Update the `version` field in `Cargo.toml`.
 Create and push a git tag following the `vX.Y.Z` format.
 
 ```bash
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "Release v0.1.1"
+git push origin v0.1.1
 ```
 
 ### Step 3: Automated Assets
