@@ -1,14 +1,13 @@
-# SoA Data-Oriented Vector
-# Uses: Shape (#), Allocation (new), Set (set), Get (get)
+// SoA Data-Oriented Vector
+// Uses: Shape (#), Allocation (new), Set (set), Get (get)
 
-# Define 3D Vector Shape
+// Define 3D Vector Shape
 # Vector3 x y z
-# Vector3 i64 i64 i64
 
-# Define a function to initialize a vector at index 0
+// Define a function to initialize a vector at index 0
 : init_vec n
-    let v new Vector3 > ^0
-    set & v x 0 10
-    set & v y 0 20
-    set & v z 0 30
-    get > v x 0
+    L v N Vector3 > ^0
+    S & v x 0 10
+    S & v y 0 20
+    S & v z 0 30
+    G > v x 0

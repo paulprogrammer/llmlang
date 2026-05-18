@@ -1,15 +1,15 @@
-# Expansion Polymorphism
-# Uses: Expansion (!), Structural Duck Typing
+// Expansion Polymorphism
+// Uses: Expansion (!), Structural Duck Typing
 
-# Define two different shapes with an 'x' field
+// Define two different shapes with an 'x' field
 # Point x y
 # Player id x health
 
-# Generic function that doesn't care about the type
-# as long as it has field 'x'
+// Generic function that doesn't care about the type
+// as long as it has field 'x'
 : get_x !obj
-    get !obj x 0
+    G !obj x 0
 
-# Test calls (handled by compiler monomorphization)
-# @ get_x new Point 1
-# @ get_x new Player 1
+// Test calls (handled by compiler monomorphization)
+// @ get_x N Point 1
+// @ get_x N Player 1
