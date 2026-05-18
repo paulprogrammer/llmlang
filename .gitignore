@@ -3,3 +3,4 @@
 *.ll
 *_bin
 out.llms
+/.gemini/
