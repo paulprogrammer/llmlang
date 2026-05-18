@@ -14,6 +14,7 @@ as the developer.
 - **[Design Guide](./DESIGN.md):** Deep dive into the philosophy, memory layout (SoA), and linear ownership system.
 - **[User Guide](./USER_GUIDE.md):** End-to-end build-to-binary pipeline and syntax quick reference.
 - **[Build Guide](./BUILD_GUIDE.md):** Instructions for compiling the Rust toolchain and LLVM dependencies.
+- **[Installation Guide](./INSTALL_GUIDE.md):** Deployment options for system, user, or project-local availability.
 - **[MCP Server Guide](./MCP_GUIDE.md):** How to use the `llm-mcp` binary for structural codebase traversal.
 - **[Diagnostics](./DIAGNOSTICS.md):** Mapping of token-efficient error and warning codes (`E00x`, `W00x`).
 - **[Release Guide](./RELEASE_GUIDE.md):** Versioning strategy and automated release process.
