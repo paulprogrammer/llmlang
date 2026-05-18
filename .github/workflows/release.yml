@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -37,55 +37,55 @@ jobs:
             artifact_name: llmlang-linux-arm64
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-    - name: Install LLVM and Clang
-      uses: KyleMayes/install-llvm-action@v2
-      with:
-        version: "22.1"
-        # Uses pre-built binaries; much faster and sets up PATH automatically.
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21"
+          # Uses pre-built binaries; much faster and sets up PATH automatically.
 
-    - name: Set LLVM Prefix
-      shell: bash
-      run: echo "LLVM_SYS_221_PREFIX=$LLVM_PATH" >> $GITHUB_ENV
+      - name: Set LLVM Prefix
+        shell: bash
+        run: echo "LLVM_SYS_221_PREFIX=$LLVM_PATH" >> $GITHUB_ENV
 
-    - name: Install Linux Dependencies
-      if: matrix.os == 'linux'
-      run: sudo apt-get update && sudo apt-get install -y libclang-common-22-dev libpolly-22-dev
+      - name: Install Linux Dependencies
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libclang-common-22-dev libpolly-22-dev
 
-    - name: Build release binaries
-      run: cargo build --release --verbose
+      - name: Build release binaries
+        run: cargo build --release --verbose
 
-    - name: Prepare assets (Unix)
-      if: matrix.os != 'windows'
-      run: |
-        mkdir -p dist
-        cp target/release/llmlang dist/
-        cp target/release/llm-mcp dist/
-        cp llm-clang dist/
-        tar -czvf ${{ matrix.artifact_name }}.tar.gz -C dist .
+      - name: Prepare assets (Unix)
+        if: matrix.os != 'windows'
+        run: |
+          mkdir -p dist
+          cp target/release/llmlang dist/
+          cp target/release/llm-mcp dist/
+          cp llm-clang dist/
+          tar -czvf ${{ matrix.artifact_name }}.tar.gz -C dist .
 
-    - name: Prepare assets (Windows)
-      if: matrix.os == 'windows'
-      shell: powershell
-      run: |
-        if (!(Test-Path dist)) { mkdir dist }
-        copy target\release\llmlang.exe dist\
-        copy target\release\llm-mcp.exe dist\
-        copy llm-clang dist\
-        tar -a -c -f ${{ matrix.artifact_name }}.zip -C dist .
+      - name: Prepare assets (Windows)
+        if: matrix.os == 'windows'
+        shell: powershell
+        run: |
+          if (!(Test-Path dist)) { mkdir dist }
+          copy target\release\llmlang.exe dist\
+          copy target\release\llm-mcp.exe dist\
+          copy llm-clang dist\
+          tar -a -c -f ${{ matrix.artifact_name }}.zip -C dist .
 
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          llmlang-*.tar.gz
-          llmlang-*.zip
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            llmlang-*.tar.gz
+            llmlang-*.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
