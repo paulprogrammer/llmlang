@@ -113,7 +113,7 @@ impl ServerHandler for LLMLangMCPHandler {
                     {
                         "name": "analyze_codebase",
                         "description": "Indexes all .llm files in the given path",
-                        "inputSchema": {
+                        "input_schema": {
                             "type": "object",
                             "properties": {
                                 "path": { "type": "string", "description": "Local path to the codebase" }
@@ -124,7 +124,7 @@ impl ServerHandler for LLMLangMCPHandler {
                     {
                         "name": "search_symbols",
                         "description": "Searches for functions or shapes by name",
-                        "inputSchema": {
+                        "input_schema": {
                             "type": "object",
                             "properties": {
                                 "query": { "type": "string" }
@@ -135,7 +135,7 @@ impl ServerHandler for LLMLangMCPHandler {
                     {
                         "name": "find_callers",
                         "description": "Finds all functions that call the given symbol",
-                        "inputSchema": {
+                        "input_schema": {
                             "type": "object",
                             "properties": {
                                 "symbol": { "type": "string" }
@@ -146,7 +146,7 @@ impl ServerHandler for LLMLangMCPHandler {
                     {
                         "name": "structural_search",
                         "description": "Finds functions with a similar AST structure",
-                        "inputSchema": {
+                        "input_schema": {
                             "type": "object",
                             "properties": {
                                 "function_name": { "type": "string" }
