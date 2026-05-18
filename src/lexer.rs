@@ -13,10 +13,11 @@ pub enum Token {
     DeBruijn(usize), // ^0, ^1
     Question,  // ?
     Bang,      // !
-    New,       // new
-    Get,       // get
-    Set,       // set
-    Export,    // export
+    New,       // N
+    Get,       // G
+    Set,       // S
+    Export,    // X
+    Let,       // L
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -59,6 +60,11 @@ impl Lexer {
             '#' => Token::Shape,
             '?' => Token::Question,
             '!' => Token::Bang,
+            'N' => Token::New,
+            'G' => Token::Get,
+            'S' => Token::Set,
+            'X' => Token::Export,
+            'L' => Token::Let,
             '^' => self.lex_debruijn(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
@@ -92,13 +98,10 @@ impl Lexer {
             id_str.push(self.input[self.pos]);
             self.pos += 1;
         }
-        match id_str.as_str() {
-            "new" => Token::New,
-            "get" => Token::Get,
-            "set" => Token::Set,
-            "export" => Token::Export,
-            _ => Token::Identifier(id_str),
-        }
+        // Since we now use single-char uppercase for keywords, 
+        // they are handled in the main match block. 
+        // This lex_identifier is primarily for multi-char or lowercase identifiers.
+        Token::Identifier(id_str)
     }
 
     fn lex_debruijn(&mut self) -> Token {

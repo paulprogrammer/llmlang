@@ -250,6 +250,18 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 item.value
             }
+            Expr::Let(_name, val_expr, body_expr) => {
+                let val = self.gen_expr(val_expr, stack, expand_map);
+                stack.push(StackItem { value: val, state: VariableState::Available });
+                let res = self.gen_expr(body_expr, stack, expand_map);
+                
+                // Pop local binding
+                let item = stack.pop().unwrap();
+                if item.state == VariableState::Available {
+                    self.warnings.borrow_mut().push("W001".to_string());
+                }
+                res
+            }
             _ => panic!("E001"),
         }
     }

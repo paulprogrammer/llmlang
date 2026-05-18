@@ -78,14 +78,17 @@ The LLM only needs to read `math_lib.llms` to understand how to call your librar
 
 | Operation | Syntax | Description |
 | :--- | :--- | :--- |
-| **Export** | `export ...` | Mark a definition for external consumption. |
+| **Export** | `X ...` | Mark a definition for external consumption. |
 | **Apply** | `@ func arg` | Call a function (recursive calls allowed). |
 | **Branch** | `? cond t f` | Conditional branch (phi-merge). |
 | **Move** | `> ^index` | Consume a variable (Linear Ownership). |
 | **Borrow** | `& ^index` | Read a variable without consuming. |
 | **De Bruijn** | `^0`, `^1` | Reference variables by scope depth. |
 | **Shape** | `# Name i64 ...` | Define a Struct of Arrays memory layout. |
-| **New** | `new Name count` | Allocate a new SoA instance. |
+| **New** | `N Name count` | Allocate a new SoA instance. |
+| **Get** | `G instance f idx`| Load value from SoA column. |
+| **Set** | `S instance f idx v`| Store value to SoA column. |
+| **Let** | `L name val body` | Create a local binding. |
 
 ## 4. Understanding Diagnostics
 

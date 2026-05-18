@@ -9,8 +9,12 @@
   * `@` : Application. `@ func arg1...` (Arity determined by definition).
   * `?` : Branching. `? cond true_expr false_expr`
   * `:` : Define. `: name arg1... body`
-  * `export` : Mark for library export. `export ...`
+  * `X` : Export. `X ...`
+  * `L` : Let binding. `L name val body`
   * `#` : Shape (SoA). `# Name type1 type2...`
+  * `N` : New (Alloc). `N Shape count`
+  * `G` : Get (Load). `G inst field idx`
+  * `S` : Set (Store). `S inst field idx val`
   * `>` : Move (Consume). `> ^index`
   * `&` : Borrow (Read). `& ^index`
   * `^n`: De Bruijn Index. `^0` = nearest scope.
@@ -22,16 +26,16 @@
 4. **Leak (`W001`):** Binding defined but never moved.
 
 ## 3. Data Layout (SOA_ENFORCED)
-* **Keyword:** `new`, `get`, `set`.
-* **Allocation:** `new ShapeName count_expr`. Returns pointer-struct.
+* **Keyword:** `N`, `G`, `S`.
+* **Allocation:** `N ShapeName count_expr`. Returns pointer-struct.
 * **Access:** 
-  * `get pts x 0` -> Load row 0 of column 'x'.
-  * `set pts x 0 val` -> Store val to row 0 of column 'x'.
+  * `G pts x 0` -> Load row 0 of column 'x'.
+  * `S pts x 0 val` -> Store val to row 0 of column 'x'.
 * **Efficiency:** Columnar contiguous memory. SIMD-ready.
 
 ## 4. Execution & Entry Point
 * **Binary Target:** Requires a `: main` function definition.
-* **Compilation:** `.llm` -> `llmlang` -> `.ll` -> `clang` -> binary.
+* **Compilation:** `.llm` -> `llmlang` -> `.o` -> `clang` -> binary.
 
 ## 5. Diagnostic Codes
 * **E003:** OOB Index.
@@ -42,7 +46,8 @@
 * **W001:** Linear Leak.
 Ref: DIAGNOSTICS.md
 
-## 5. Examples (Dense)
+## 6. Examples (Dense)
 - Add 1 to arg: `: add1 x + > ^0 1`
 - Factorial (Recursion): `: fact n ? ^0 * & ^0 @ fact - > ^0 1 > ^0`
+- Local Binding: `: calc x L y + > ^0 1 * & y & y`
 - Branch violation: `: fail x ? ^0 > ^0 0` -> `E009` (False branch didn't move x)

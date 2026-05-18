@@ -19,11 +19,12 @@ pub enum Expr {
     MutBorrow(Box<Expr>),                  // ~ expr
     Define(String, Vec<Param>, Box<Expr>, bool), // : name (args) body, exported?
     Shape(String, Vec<String>, bool),             // # name field1 field2 ..., exported?
-    New(String, Box<Expr>),                 // new shape_name count
-    Get(Box<Expr>, String, Box<Expr>),      // get instance field index
-    Set(Box<Expr>, String, Box<Expr>, Box<Expr>), // set instance field index value
+    New(String, Box<Expr>),                 // N shape_name count
+    Get(Box<Expr>, String, Box<Expr>),      // G instance field index
+    Set(Box<Expr>, String, Box<Expr>, Box<Expr>), // S instance field index value
     If(Box<Expr>, Box<Expr>, Box<Expr>),    // ? cond true_branch false_branch
     Expand(String),                         // ! name (reference to expand param)
+    Let(String, Box<Expr>, Box<Expr>),      // L name val body
 }
 
 pub struct Parser {
@@ -75,7 +76,7 @@ impl Parser {
                 self.consume(); // consume @
                 let func = self.parse_expr();
                 let mut args = Vec::new();
-                while self.current_token != Token::EOF && self.current_token != Token::Define && self.current_token != Token::Shape {
+                while self.current_token != Token::EOF && self.current_token != Token::Define && self.current_token != Token::Shape && self.current_token != Token::Let {
                      args.push(self.parse_expr());
                      if args.len() == 1 { break; } 
                 }
@@ -138,7 +139,7 @@ impl Parser {
                 match self.parse_expr() {
                     Expr::Shape(n, f, _) => Expr::Shape(n, f, true),
                     Expr::Define(n, a, b, _) => Expr::Define(n, a, b, true),
-                    _ => panic!("E015"), // Only shapes and defines can be exported
+                    _ => panic!("E015"),
                 }
             }
             Token::New => {
@@ -182,6 +183,16 @@ impl Parser {
                 self.consume();
                 if let Token::Identifier(name) = self.consume() {
                     Expr::Expand(name)
+                } else {
+                    panic!("E002");
+                }
+            }
+            Token::Let => {
+                self.consume();
+                if let Token::Identifier(name) = self.consume() {
+                    let val = self.parse_expr();
+                    let body = self.parse_expr();
+                    Expr::Let(name, Box::new(val), Box::new(body))
                 } else {
                     panic!("E002");
                 }
