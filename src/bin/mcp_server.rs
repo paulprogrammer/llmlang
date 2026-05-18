@@ -232,6 +232,9 @@ impl ServerHandler for LLMLangMCPHandler {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (read_tx, read_rx) = mpsc::channel::<String>(100);
     let (write_tx, mut write_rx) = mpsc::channel::<String>(100);
+    let init_id = Arc::new(RwLock::new(None));
+    let init_id_stdin = init_id.clone();
+    let init_id_stdout = init_id.clone();
 
     // Stdin reader with normalization shim
     tokio::spawn(async move {
@@ -242,6 +245,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut changed = false;
                 if let Some(method) = val.get("method").and_then(|v| v.as_str()) {
                     if method == "initialize" {
+                        if let Some(id) = val.get("id") {
+                            *init_id_stdin.write().await = Some(id.clone());
+                        }
                         if let Some(params) = val.get_mut("params").and_then(|p| p.as_object_mut()) {
                             if let Some(client_info) = params.remove("clientInfo") {
                                 params.insert("implementation".to_string(), client_info);
@@ -265,11 +271,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Stdout writer
+    // Stdout writer with normalization shim
     tokio::spawn(async move {
         let mut stdout = stdout();
         while let Some(line) = write_rx.recv().await {
-            let _ = stdout.write_all(line.as_bytes()).await;
+            let normalized_line = if let Ok(mut val) = serde_json::from_str::<Value>(&line) {
+                let mut changed = false;
+                if let Some(id) = val.get("id") {
+                    let mut lock = init_id_stdout.write().await;
+                    if Some(id) == lock.as_ref() {
+                        // This is the initialize response
+                        if let Some(result) = val.get_mut("result") {
+                            let caps = result.take();
+                            *result = json!({
+                                "protocolVersion": "2024-11-05",
+                                "capabilities": caps,
+                                "serverInfo": {
+                                    "name": "llm-mcp",
+                                    "version": "0.1.3"
+                                }
+                            });
+                            changed = true;
+                        }
+                        *lock = None;
+                    }
+                }
+                if changed {
+                    serde_json::to_string(&val).unwrap_or(line)
+                } else {
+                    line
+                }
+            } else {
+                line
+            };
+            let _ = stdout.write_all(normalized_line.as_bytes()).await;
             let _ = stdout.write_all(b"\n").await;
             let _ = stdout.flush().await;
         }
