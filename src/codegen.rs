@@ -56,6 +56,14 @@ impl<'ctx> CodeGen<'ctx> {
         match expr {
             Expr::Integer(i) => self.context.i64_type().const_int(*i as u64, false).into(),
             Expr::Float(f) => self.context.f64_type().const_float(*f).into(),
+            Expr::Identifier(name) => {
+                // If it's just an identifier, check if it's a function name in the module
+                if let Some(func) = self.module.get_function(name) {
+                    func.as_global_value().as_pointer_value().into()
+                } else {
+                    panic!("E013"); // Unknown identifier
+                }
+            }
             Expr::DeBruijn(index) => {
                 if *index >= stack.len() {
                     panic!("E003");
@@ -173,6 +181,58 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(ptr_to_element, value).unwrap();
                 value
             }
+            Expr::If(cond_expr, true_expr, false_expr) => {
+                let cond = self.gen_expr(cond_expr, stack).into_int_value();
+                let parent_func = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+
+                let true_bb = self.context.append_basic_block(parent_func, "then");
+                let false_bb = self.context.append_basic_block(parent_func, "else");
+                let merge_bb = self.context.append_basic_block(parent_func, "ifcont");
+
+                let zero = self.context.i64_type().const_int(0, false);
+                let cond_bool = self.builder.build_int_compare(inkwell::IntPredicate::NE, cond, zero, "ifcond").unwrap();
+                self.builder.build_conditional_branch(cond_bool, true_bb, false_bb).unwrap();
+
+                let initial_stack_state: Vec<VariableState> = stack.iter().map(|item| item.state).collect();
+                
+                self.builder.position_at_end(true_bb);
+                let true_val = self.gen_expr(true_expr, stack);
+                let true_stack_state: Vec<VariableState> = stack.iter().map(|item| item.state).collect();
+                self.builder.build_unconditional_branch(merge_bb).unwrap();
+                let true_bb_final = self.builder.get_insert_block().unwrap();
+
+                for (i, state) in initial_stack_state.iter().enumerate() {
+                    stack[i].state = *state;
+                }
+
+                self.builder.position_at_end(false_bb);
+                let false_val = self.gen_expr(false_expr, stack);
+                let false_stack_state: Vec<VariableState> = stack.iter().map(|item| item.state).collect();
+                self.builder.build_unconditional_branch(merge_bb).unwrap();
+                let false_bb_final = self.builder.get_insert_block().unwrap();
+
+                if true_stack_state != false_stack_state {
+                    panic!("E009");
+                }
+
+                self.builder.position_at_end(merge_bb);
+                let phi = self.builder.build_phi(true_val.get_type(), "iftmp").unwrap();
+                phi.add_incoming(&[(&true_val, true_bb_final), (&false_val, false_bb_final)]);
+                phi.as_basic_value()
+            }
+            Expr::Apply(func_expr, args) => {
+                if let Expr::Identifier(ref name) = **func_expr {
+                    let function = self.module.get_function(name).expect("E010");
+                    let mut args_vals = Vec::new();
+                    for arg in args {
+                        args_vals.push(self.gen_expr(arg, stack).into());
+                    }
+                    let call = self.builder.build_call(function, &args_vals, "calltmp").unwrap();
+                    call.try_as_basic_value().basic().expect("E011")
+                } else {
+                    panic!("E012");
+                }
+            }
             _ => panic!("E001"),
         }
     }
@@ -181,6 +241,8 @@ impl<'ctx> CodeGen<'ctx> {
         let i64_type = self.context.i64_type();
         let args_types = vec![i64_type.into(); arg_count];
         let fn_type = i64_type.fn_type(&args_types, false);
+        
+        // Register function signature BEFORE generating body to allow recursion
         let function = self.module.add_function(name, fn_type, None);
         
         let basic_block = self.context.append_basic_block(function, "entry");

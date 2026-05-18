@@ -12,6 +12,7 @@ This document maps the token-efficient diagnostic codes emitted by the compiler 
 - **E006**: Unknown shape name.
 - **E007**: Field not found in shape.
 - **E008**: Unsupported binary operation.
+- **E009**: Branch stack state mismatch (linear typing violation).
 
 ## Warnings (W)
 - **W001**: Variable leaked; defined but never consumed (linear typing violation).

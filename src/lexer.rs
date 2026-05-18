@@ -11,6 +11,7 @@ pub enum Token {
     Define,    // :
     Shape,     // #
     DeBruijn(usize), // ^0, ^1
+    Question,  // ?
     New,       // new
     Get,       // get
     Set,       // set
@@ -54,6 +55,7 @@ impl Lexer {
             '~' => Token::MutBorrow,
             ':' => Token::Define,
             '#' => Token::Shape,
+            '?' => Token::Question,
             '^' => self.lex_debruijn(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),

@@ -130,3 +130,42 @@ fn test_negative_unknown_shape() {
         assert_eq!(msg, "E006");
     }
 }
+
+#[test]
+fn test_positive_branching() {
+    let context = Context::create();
+    let input = ": test x ? ^0 1 0"; // if x != 0 then 1 else 0
+    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, args, body) = ast {
+        codegen.gen_function(&name, args.len(), &body);
+    }
+    
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("then:"));
+    assert!(ir.contains("else:"));
+    assert!(ir.contains("phi i64 [ 1, %then ], [ 0, %else ]"));
+}
+
+#[test]
+fn test_positive_recursion() {
+    let context = Context::create();
+    // Equivalent to: 
+    // def fact(n):
+    //   if n != 0: return n * fact(n - 1)
+    //   else: return 1
+    
+    // In llmlang:
+    // : fact n ? ^0 * & ^0 @ fact - > ^0 1 > ^0
+    
+    let input = ": fact n ? ^0 * & ^0 @ fact - > ^0 1 > ^0";
+    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, args, body) = ast {
+        codegen.gen_function(&name, args.len(), &body);
+    }
+    
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("call i64 @fact"));
+    assert!(ir.contains("phi i64"));
+}

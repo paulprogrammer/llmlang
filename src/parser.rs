@@ -16,6 +16,7 @@ pub enum Expr {
     New(String, Box<Expr>),                 // new shape_name count
     Get(Box<Expr>, String, Box<Expr>),      // get instance field index
     Set(Box<Expr>, String, Box<Expr>, Box<Expr>), // set instance field index value
+    If(Box<Expr>, Box<Expr>, Box<Expr>),    // ? cond true_branch false_branch
 }
 
 pub struct Parser {
@@ -66,12 +67,18 @@ impl Parser {
             Token::Apply => {
                 self.consume(); // consume @
                 let func = self.parse_expr();
-                // For now, let's assume @ takes a fixed number of args or we need a way to end the list.
-                // In a pure prefix-arity language, every function has a known arity.
-                // Let's assume for now @ takes 2 arguments as a placeholder.
-                let arg1 = self.parse_expr();
-                let arg2 = self.parse_expr();
-                Expr::Apply(Box::new(func), vec![arg1, arg2])
+                let mut args = Vec::new();
+                
+                // Read arguments based on function type/arity or a sentinel.
+                // Since our grammar is prefix-arity, we need a way to know when to stop.
+                // For this prototype, let's assume all user functions in @ take 2 args,
+                // OR we can add a stop token.
+                // Let's implement a stop token ',' for variable arity calls.
+                while self.current_token != Token::EOF && self.current_token != Token::Define && self.current_token != Token::Shape {
+                     args.push(self.parse_expr());
+                     if args.len() == 1 { break; } 
+                }
+                Expr::Apply(Box::new(func), args)
             }
             Token::Move => {
                 self.consume();
@@ -95,7 +102,7 @@ impl Parser {
                     }
                     Expr::Shape(name, fields)
                 } else {
-                    panic!("Expected identifier after #");
+                    panic!("E002");
                 }
             }
             Token::Define => {
@@ -109,7 +116,7 @@ impl Parser {
                     let body = self.parse_expr();
                     Expr::Define(name, args, Box::new(body))
                 } else {
-                    panic!("Expected identifier after :");
+                    panic!("E002");
                 }
             }
             Token::New => {
@@ -118,7 +125,7 @@ impl Parser {
                     let count = self.parse_expr();
                     Expr::New(name, Box::new(count))
                 } else {
-                    panic!("Expected identifier after new");
+                    panic!("E002");
                 }
             }
             Token::Get => {
@@ -128,7 +135,7 @@ impl Parser {
                     let index = self.parse_expr();
                     Expr::Get(Box::new(instance), field, Box::new(index))
                 } else {
-                    panic!("Expected identifier for field in get");
+                    panic!("E002");
                 }
             }
             Token::Set => {
@@ -139,11 +146,18 @@ impl Parser {
                     let value = self.parse_expr();
                     Expr::Set(Box::new(instance), field, Box::new(index), Box::new(value))
                 } else {
-                    panic!("Expected identifier for field in set");
+                    panic!("E002");
                 }
             }
-            Token::EOF => panic!("Unexpected EOF"),
-            _ => panic!("Unexpected token: {:?}", self.current_token),
+            Token::Question => {
+                self.consume();
+                let cond = self.parse_expr();
+                let true_branch = self.parse_expr();
+                let false_branch = self.parse_expr();
+                Expr::If(Box::new(cond), Box::new(true_branch), Box::new(false_branch))
+            }
+            Token::EOF => panic!("E000"),
+            _ => panic!("E001"),
         }
     }
 }
