@@ -50,7 +50,7 @@ impl Lexer {
             '+' => Token::Add,
             '-' => Token::Sub,
             '*' => Token::Mul,
-            '/' => Token::Div,
+            '/' => self.lex_slash(),
             '>' => Token::Move,
             '&' => Token::Borrow,
             '~' => Token::MutBorrow,
@@ -106,5 +106,19 @@ impl Lexer {
             self.pos += 1;
         }
         Token::DeBruijn(num_str.parse().unwrap_or(0))
+    }
+
+    fn lex_slash(&mut self) -> Token {
+        if self.pos < self.input.len() && self.input[self.pos] == '/' {
+            while self.pos < self.input.len() && self.input[self.pos] != '\n' {
+                self.pos += 1;
+            }
+            if self.pos < self.input.len() && self.input[self.pos] == '\n' {
+                self.pos += 1;
+            }
+            self.next_token()
+        } else {
+            Token::Div
+        }
     }
 }

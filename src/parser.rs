@@ -182,4 +182,12 @@ impl Parser {
             _ => panic!("E001"),
         }
     }
+
+    pub fn parse_module(&mut self) -> Vec<Expr> {
+        let mut exprs = Vec::new();
+        while self.current_token != Token::EOF {
+            exprs.push(self.parse_expr());
+        }
+        exprs
+    }
 }

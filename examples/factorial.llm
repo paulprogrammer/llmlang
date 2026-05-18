@@ -1,5 +1,5 @@
-# Factorial Recursive
-# Uses: Branching (?), Recursion (@), Move (>), Borrow (&)
-# Logic: fact(n) = n == 0 ? 1 : n * fact(n-1)
+// Factorial Recursive
+// Uses: Branching Recursion Move Borrow
+// Logic: fact n
 
 : fact n ? ^0 * & ^0 @ fact - > ^0 1 > ^0
