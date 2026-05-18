@@ -5,14 +5,16 @@ on:
     tags:
       - 'v*'
 
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-and-release:
     name: Build for ${{ matrix.os }} (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     strategy:
       fail-fast: false
       matrix:
@@ -29,8 +31,6 @@ jobs:
             arch: x86_64
             runner: windows-latest
             artifact_name: llmlang-windows-x86_64
-          # Note: Linux ARM64 requires a native runner or cross-compilation setup.
-          # GitHub now provides ubuntu-24.04-arm which we can use for native ARM.
           - os: linux
             arch: arm64
             runner: ubuntu-24.04-arm
@@ -60,10 +60,12 @@ jobs:
 
     - name: Install LLVM (Windows)
       if: matrix.os == 'windows'
+      shell: powershell
       run: |
-        choco install llvm
-        echo "LLVM_SYS_221_PREFIX=C:\Program Files\LLVM" >> $GITHUB_ENV
-        echo "C:\Program Files\LLVM\bin" >> $GITHUB_PATH
+        choco install llvm --version=22.1.5 -y
+        $llvmPath = "C:\Program Files\LLVM"
+        echo "LLVM_SYS_221_PREFIX=$llvmPath" >> $env:GITHUB_ENV
+        echo "$llvmPath\bin" >> $env:GITHUB_PATH
 
     - name: Install dependencies (Linux)
       if: matrix.os == 'linux'
@@ -83,6 +85,7 @@ jobs:
 
     - name: Prepare assets (Windows)
       if: matrix.os == 'windows'
+      shell: powershell
       run: |
         mkdir dist
         copy target\release\llmlang.exe dist\
