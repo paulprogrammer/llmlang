@@ -29,7 +29,7 @@ jobs:
             artifact_name: llmlang-macos-arm64
           - os: windows
             arch: x86_64
-            runner: windows-latest
+            runner: windows-2025
             artifact_name: llmlang-windows-x86_64
           - os: linux
             arch: arm64
@@ -42,49 +42,17 @@ jobs:
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
 
-    - name: Install LLVM (Linux)
-      if: matrix.os == 'linux'
-      run: |
-        wget https://apt.llvm.org/llvm.sh
-        chmod +x llvm.sh
-        sudo ./llvm.sh 22
-        echo "LLVM_SYS_221_PREFIX=/usr/lib/llvm-22" >> $GITHUB_ENV
-        echo "/usr/lib/llvm-22/bin" >> $GITHUB_PATH
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v2
+      with:
+        version: "22.1"
+        # Uses pre-built binaries; much faster and sets up PATH automatically.
 
-    - name: Install LLVM (macOS)
-      if: matrix.os == 'macos'
-      run: |
-        brew install llvm
-        echo "LLVM_SYS_221_PREFIX=$(brew --prefix llvm)" >> $GITHUB_ENV
-        echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+    - name: Set LLVM Prefix
+      shell: bash
+      run: echo "LLVM_SYS_221_PREFIX=$LLVM_PATH" >> $GITHUB_ENV
 
-    - name: Install LLVM (Windows)
-      if: matrix.os == 'windows'
-      shell: powershell
-      run: |
-        choco install llvm --version=22.1.0 -y
-        $llvmPath = "C:\Program Files\LLVM"
-        Add-Content -Path $env:GITHUB_ENV -Value "LLVM_SYS_221_PREFIX=$llvmPath" -Encoding UTF8
-        Add-Content -Path $env:GITHUB_PATH -Value "$llvmPath\bin" -Encoding UTF8
-
-    - name: Verify LLVM (Windows)
-      if: matrix.os == 'windows'
-      shell: powershell
-      run: |
-        $llvmPath = "C:\Program Files\LLVM"
-        if (Test-Path "$llvmPath\bin\llvm-config.exe") {
-          echo "Found llvm-config"
-          & "$llvmPath\bin\llvm-config.exe" --version
-        } else {
-          echo "llvm-config not found in $llvmPath\bin"
-          ls "$llvmPath\bin"
-        }
-        if (Test-Path "$llvmPath\lib") {
-          echo "Found lib dir"
-          ls "$llvmPath\lib\*.lib" | select -First 5
-        }
-
-    - name: Install dependencies (Linux)
+    - name: Install Linux Dependencies
       if: matrix.os == 'linux'
       run: sudo apt-get update && sudo apt-get install -y libclang-common-22-dev libpolly-22-dev
 
@@ -104,7 +72,7 @@ jobs:
       if: matrix.os == 'windows'
       shell: powershell
       run: |
-        mkdir dist
+        if (!(Test-Path dist)) { mkdir dist }
         copy target\release\llmlang.exe dist\
         copy target\release\llm-mcp.exe dist\
         copy llm-clang dist\
