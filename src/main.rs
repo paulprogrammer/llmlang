@@ -8,7 +8,7 @@ use std::process;
 
 fn print_help() {
     println!("\
-llmlang v0.1.1
+llmlang v0.1.2
 The Turing-complete, polymorphic language optimized for LLM token usage and execution speed.
 
 USAGE:
@@ -28,7 +28,7 @@ OPTIONS:
 
 fn print_version() {
     let llvm_version = inkwell::support::get_llvm_version();
-    println!("llmlang 0.1.1");
+    println!("llmlang 0.1.2");
     println!("Build Options:");
     println!("  LLVM Version: {}.{}.{}", llvm_version.0, llvm_version.1, llvm_version.2);
     println!("  Targets: all, webassembly");
