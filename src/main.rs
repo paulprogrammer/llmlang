@@ -65,6 +65,9 @@ fn main() {
                 Expr::Define(name, params, body, _exported) => {
                     codegen.gen_function(&name, params, &body);
                 }
+                Expr::Import(module, symbol) => {
+                    codegen.gen_import(&module, &symbol);
+                }
                 _ => {}
             }
         }

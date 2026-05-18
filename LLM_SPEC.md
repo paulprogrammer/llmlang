@@ -11,6 +11,7 @@
   * `:` : Define. `: name arg1... body`
   * `X` : Export. `X ...`
   * `L` : Let binding. `L name val body`
+  * `I` : Import. `I module_alias symbol_name`
   * `#` : Shape (SoA). `# Name type1 type2...`
   * `N` : New (Alloc). `N Shape count`
   * `G` : Get (Load). `G inst field idx`
@@ -50,4 +51,4 @@ Ref: DIAGNOSTICS.md
 - Add 1 to arg: `: add1 x + > ^0 1`
 - Factorial (Recursion): `: fact n ? ^0 * & ^0 @ fact - > ^0 1 > ^0`
 - Local Binding: `: calc x L y + > ^0 1 * & y & y`
-- Branch violation: `: fail x ? ^0 > ^0 0` -> `E009` (False branch didn't move x)
+- Library Import: `I math sin : test x @ sin ^0`

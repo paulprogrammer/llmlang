@@ -18,6 +18,7 @@ pub enum Token {
     Set,       // S
     Export,    // X
     Let,       // L
+    Import,    // I
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -65,6 +66,7 @@ impl Lexer {
             'S' => Token::Set,
             'X' => Token::Export,
             'L' => Token::Let,
+            'I' => Token::Import,
             '^' => self.lex_debruijn(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
@@ -98,9 +100,6 @@ impl Lexer {
             id_str.push(self.input[self.pos]);
             self.pos += 1;
         }
-        // Since we now use single-char uppercase for keywords, 
-        // they are handled in the main match block. 
-        // This lex_identifier is primarily for multi-char or lowercase identifiers.
         Token::Identifier(id_str)
     }
 

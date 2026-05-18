@@ -132,3 +132,24 @@ fn test_positive_export_sig() {
     assert!(sig.contains("# Point x y"));
     assert!(sig.contains(": add_x ..."));
 }
+
+#[test]
+fn test_positive_import() {
+    let context = Context::create();
+    let input = "I math sin\n: test x @ sin ^0";
+    let mut parser = Parser::new(Lexer::new(input));
+    let codegen = CodeGen::new(&context, "test");
+    
+    let exprs = parser.parse_module();
+    for expr in exprs {
+        match expr {
+            Expr::Import(m, s) => codegen.gen_import(&m, &s),
+            Expr::Define(n, p, b, _) => { codegen.gen_function(&n, p, &b); },
+            _ => {}
+        }
+    }
+    
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("declare i64 @sin(i64)"));
+    assert!(ir.contains("call i64 @sin(i64 %0)"));
+}

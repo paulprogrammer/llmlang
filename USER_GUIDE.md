@@ -89,6 +89,7 @@ The LLM only needs to read `math_lib.llms` to understand how to call your librar
 | **Get** | `G instance f idx`| Load value from SoA column. |
 | **Set** | `S instance f idx v`| Store value to SoA column. |
 | **Let** | `L name val body` | Create a local binding. |
+| **Import** | `I mod symbol` | Import external symbol. |
 
 ## 4. Understanding Diagnostics
 

@@ -25,6 +25,7 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>, Box<Expr>),    // ? cond true_branch false_branch
     Expand(String),                         // ! name (reference to expand param)
     Let(String, Box<Expr>, Box<Expr>),      // L name val body
+    Import(String, String),                 // I module_alias symbol_name
 }
 
 pub struct Parser {
@@ -76,7 +77,7 @@ impl Parser {
                 self.consume(); // consume @
                 let func = self.parse_expr();
                 let mut args = Vec::new();
-                while self.current_token != Token::EOF && self.current_token != Token::Define && self.current_token != Token::Shape && self.current_token != Token::Let {
+                while self.current_token != Token::EOF && self.current_token != Token::Define && self.current_token != Token::Shape && self.current_token != Token::Let && self.current_token != Token::Import {
                      args.push(self.parse_expr());
                      if args.len() == 1 { break; } 
                 }
@@ -193,6 +194,18 @@ impl Parser {
                     let val = self.parse_expr();
                     let body = self.parse_expr();
                     Expr::Let(name, Box::new(val), Box::new(body))
+                } else {
+                    panic!("E002");
+                }
+            }
+            Token::Import => {
+                self.consume();
+                if let Token::Identifier(module) = self.consume() {
+                    if let Token::Identifier(symbol) = self.consume() {
+                        Expr::Import(module, symbol)
+                    } else {
+                        panic!("E002");
+                    }
                 } else {
                     panic!("E002");
                 }

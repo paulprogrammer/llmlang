@@ -5,7 +5,7 @@ use inkwell::values::{FunctionValue, BasicValueEnum};
 use crate::parser::{Expr, Param};
 use crate::lexer::Token;
 use std::collections::HashMap;
-use inkwell::targets::{Target, TargetMachine, InitializationConfig, FileType, TargetTriple};
+use inkwell::targets::{Target, TargetMachine, InitializationConfig, FileType};
 use inkwell::OptimizationLevel;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -254,8 +254,6 @@ impl<'ctx> CodeGen<'ctx> {
                 let val = self.gen_expr(val_expr, stack, expand_map);
                 stack.push(StackItem { value: val, state: VariableState::Available });
                 let res = self.gen_expr(body_expr, stack, expand_map);
-                
-                // Pop local binding
                 let item = stack.pop().unwrap();
                 if item.state == VariableState::Available {
                     self.warnings.borrow_mut().push("W001".to_string());
@@ -264,6 +262,13 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => panic!("E001"),
         }
+    }
+
+    pub fn gen_import(&self, _module_alias: &str, symbol_name: &str) {
+        // Register an external function signature
+        let i64_type = self.context.i64_type();
+        let fn_type = i64_type.fn_type(&[i64_type.into()], false);
+        self.module.add_function(symbol_name, fn_type, None);
     }
 
     pub fn gen_function(&self, name: &str, params: Vec<Param>, body: &Expr) -> FunctionValue<'ctx> {
@@ -323,16 +328,11 @@ impl<'ctx> CodeGen<'ctx> {
         let mut sig = String::new();
         let shapes = self.shapes.borrow();
         for (name, fields) in shapes.iter() {
-            // For this prototype, we'll assume all registered shapes are potentially exported
-            // or we'd need to pass the 'exported' flag here. 
-            // Let's just generate for all for now.
             sig.push_str(&format!("# {} {}\n", name, fields.join(" ")));
         }
-        
         for func in self.module.get_functions() {
             let name = func.get_name().to_str().unwrap();
             if name == "main" { continue; }
-            // Placeholder for args: real impl would extract param types
             sig.push_str(&format!(": {} ...\n", name));
         }
         sig
