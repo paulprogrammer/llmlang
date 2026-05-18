@@ -1,1 +1,5 @@
 /target
+*.o
+*.ll
+*_bin
+out.llms
