@@ -5,6 +5,8 @@ use inkwell::values::{FunctionValue, BasicValueEnum};
 use crate::parser::{Expr, Param};
 use crate::lexer::Token;
 use std::collections::HashMap;
+use inkwell::targets::{Target, TargetMachine, InitializationConfig, FileType, TargetTriple};
+use inkwell::OptimizationLevel;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VariableState {
@@ -281,5 +283,27 @@ impl<'ctx> CodeGen<'ctx> {
         }
         self.builder.build_return(Some(&ret_val)).unwrap();
         function
+    }
+
+    pub fn emit_to_file(&self, path: &str) -> Result<(), String> {
+        Target::initialize_all(&InitializationConfig::default());
+        let target_triple = TargetMachine::get_default_triple();
+        let target = Target::from_triple(&target_triple).map_err(|e| e.to_string())?;
+        let target_machine = target
+            .create_target_machine(
+                &target_triple,
+                "generic",
+                "",
+                OptimizationLevel::Default,
+                inkwell::targets::RelocMode::Default,
+                inkwell::targets::CodeModel::Default,
+            )
+            .ok_or_else(|| "Could not create target machine".to_string())?;
+
+        target_machine
+            .write_to_file(&self.module, FileType::Object, path.as_ref())
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
     }
 }

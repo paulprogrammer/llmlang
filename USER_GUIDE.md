@@ -2,44 +2,33 @@
 
 `llmlang` is a token-optimized programming language designed for LLMs. This guide explains how to use the compiler output to create executable binaries.
 
-## 1. End-to-End Build Pipeline
+## 1. Unified Clang Workflow
 
-Follow these steps to create, compile, and run your first `llmlang` program.
+`llmlang` provides a wrapper script `llm-clang` that integrates directly with the Clang driver. This allows you to compile and link `.llm` files as if they were `.c` files.
 
-### Step A: Write the source
-Create a file named `hello.llm`. To create an executable, you must define a `main` function.
-
-```llm
-// hello.llm
-// A simple program that returns 42
-: main
-  + 40 2
-```
-
-### Step B: Compile to LLVM IR
-Use the `llmlang` compiler to generate the intermediate representation.
+### One-Command Build
 
 ```bash
-llmlang hello.llm > hello.ll
+./llm-clang my_program.llm -o my_program
+./my_program
 ```
 
-### Step C: Link to Native Binary
-Use `clang` to compile the IR into a machine-code executable.
+### End-to-End Example
 
 ```bash
-clang hello.ll -o hello
-```
+# 1. Create source
+echo ": main + 40 2" > test.llm
 
-### Step D: Run and Verify
-Execute the binary. Since the program returns a value to the OS, check the exit code.
+# 2. Build to binary
+./llm-clang test.llm -o test_bin
 
-```bash
-./hello
+# 3. Run
+./test_bin
 echo $?
 # Output: 42
 ```
 
-## 2. Targeting Different Platforms
+## 2. Advanced: Multi-Stage Build
 ...
 
 ## 3. Linking with External Libraries (C Interop)

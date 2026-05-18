@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm22-1"] }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm22-1", "target-all", "target-webassembly"] }
 anyhow = "1.0"
 pest = "2.7"
 pest_derive = "2.7"

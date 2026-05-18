@@ -1,0 +1,4 @@
+// hello.llm
+// A simple program that returns 42 to the OS
+: main
+    + 40 2

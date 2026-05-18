@@ -11,13 +11,14 @@ This guide details how to build the `llmlang` compiler from source.
 
 ## Building the Compiler
 
-To compile the `llmlang` binary:
+To compile the `llmlang` binary and set up the driver:
 
 ```bash
 cargo build --release
+chmod +x ./llm-clang
 ```
 
-The resulting binary will be located at `target/release/llmlang`.
+The resulting binary will be located at `target/release/llmlang`, and the wrapper `llm-clang` can be used for end-to-end builds.
 
 ## Running Tests
 
