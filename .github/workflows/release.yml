@@ -62,10 +62,10 @@ jobs:
       if: matrix.os == 'windows'
       shell: powershell
       run: |
-        choco install llvm --version=22.1.5 -y
+        choco install llvm --version=22.1.0 -y
         $llvmPath = "C:\Program Files\LLVM"
-        echo "LLVM_SYS_221_PREFIX=$llvmPath" >> $env:GITHUB_ENV
-        echo "$llvmPath\bin" >> $env:GITHUB_PATH
+        "LLVM_SYS_221_PREFIX=$llvmPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "$llvmPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
     - name: Install dependencies (Linux)
       if: matrix.os == 'linux'
