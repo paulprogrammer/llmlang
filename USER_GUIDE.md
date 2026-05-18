@@ -2,34 +2,58 @@
 
 `llmlang` is a token-optimized programming language designed for LLMs. This guide explains how to use the compiler output to create executable binaries.
 
-## 1. Generating LLVM IR
+## 1. End-to-End Build Pipeline
 
-To compile an `llmlang` source file (e.g., `program.llm`) into LLVM Intermediate Representation (IR):
+Follow these steps to create, compile, and run your first `llmlang` program.
 
-```bash
-llmlang program.llm > output.ll
+### Step A: Write the source
+Create a file named `hello.llm`. To create an executable, you must define a `main` function.
+
+```llm
+// hello.llm
+// A simple program that returns 42
+: main
+  + 40 2
 ```
 
-## 2. Building an Executable
-
-Once you have the `.ll` file, you can use `clang` to compile it into a native binary.
-
-### Native Binary (x86_64 / ARM)
+### Step B: Compile to LLVM IR
+Use the `llmlang` compiler to generate the intermediate representation.
 
 ```bash
-clang output.ll -o my_program
-./my_program
+llmlang hello.llm > hello.ll
 ```
 
-### WebAssembly (Wasm)
-
-If you have the `wasm32` target installed for LLVM:
+### Step C: Link to Native Binary
+Use `clang` to compile the IR into a machine-code executable.
 
 ```bash
-clang --target=wasm32 -nostdlib -Wl,--no-entry -Wl,--export-all output.ll -o output.wasm
+clang hello.ll -o hello
 ```
 
-## 3. Language Quick Reference
+### Step D: Run and Verify
+Execute the binary. Since the program returns a value to the OS, check the exit code.
+
+```bash
+./hello
+echo $?
+# Output: 42
+```
+
+## 2. Targeting Different Platforms
+...
+
+## 3. Linking with External Libraries (C Interop)
+
+`llmlang` can easily interface with C libraries. Since it outputs standard LLVM IR, you can link it with object files compiled from C.
+
+### Calling C from llmlang
+1.  **Declare the C function** (Future feature: currently requires manual IR editing or a stub).
+2.  **Compile and Link**:
+    ```bash
+    clang my_c_code.c hello.ll -o combined_app
+    ```
+
+## 4. Language Quick Reference
 
 | Operation | Syntax | Description |
 | :--- | :--- | :--- |

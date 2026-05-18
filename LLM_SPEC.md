@@ -28,7 +28,11 @@
   * `set pts x 0 val` -> Store val to row 0 of column 'x'.
 * **Efficiency:** Columnar contiguous memory. SIMD-ready.
 
-## 4. Diagnostic Codes
+## 4. Execution & Entry Point
+* **Binary Target:** Requires a `: main` function definition.
+* **Compilation:** `.llm` -> `llmlang` -> `.ll` -> `clang` -> binary.
+
+## 5. Diagnostic Codes
 * **E003:** OOB Index.
 * **E005:** Double Move (Invalid).
 * **E006:** Unknown Shape.
