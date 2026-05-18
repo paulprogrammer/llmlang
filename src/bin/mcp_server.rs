@@ -3,7 +3,7 @@ use mcp_sdk_rs::{
     error::{Error, ErrorCode},
     server::{Server, ServerHandler},
     transport::{stdio::StdioTransport},
-    types::{ClientCapabilities, Implementation, ServerCapabilities, Tool, ToolSchema, MessageContent},
+    types::{ClientCapabilities, Implementation, ServerCapabilities, MessageContent},
 };
 use serde_json::{json, Value};
 use std::sync::Arc;

@@ -3,7 +3,6 @@ use llmlang::parser::{Parser, Expr};
 use llmlang::codegen::{CodeGen};
 use inkwell::context::Context;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::collections::HashMap;
 
 #[test]
 fn test_positive_math() {
