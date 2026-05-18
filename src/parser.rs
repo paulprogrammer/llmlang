@@ -17,8 +17,8 @@ pub enum Expr {
     Move(Box<Expr>),                       // > expr
     Borrow(Box<Expr>),                     // & expr
     MutBorrow(Box<Expr>),                  // ~ expr
-    Define(String, Vec<Param>, Box<Expr>), // : name (args) body
-    Shape(String, Vec<String>),             // # name field1 field2 ...
+    Define(String, Vec<Param>, Box<Expr>, bool), // : name (args) body, exported?
+    Shape(String, Vec<String>, bool),             // # name field1 field2 ..., exported?
     New(String, Box<Expr>),                 // new shape_name count
     Get(Box<Expr>, String, Box<Expr>),      // get instance field index
     Set(Box<Expr>, String, Box<Expr>, Box<Expr>), // set instance field index value
@@ -101,7 +101,7 @@ impl Parser {
                         fields.push(field_type.clone());
                         self.consume();
                     }
-                    Expr::Shape(name, fields)
+                    Expr::Shape(name, fields, false)
                 } else {
                     panic!("E002");
                 }
@@ -128,9 +128,17 @@ impl Parser {
                         }
                     }
                     let body = self.parse_expr();
-                    Expr::Define(name, args, Box::new(body))
+                    Expr::Define(name, args, Box::new(body), false)
                 } else {
                     panic!("E002");
+                }
+            }
+            Token::Export => {
+                self.consume();
+                match self.parse_expr() {
+                    Expr::Shape(n, f, _) => Expr::Shape(n, f, true),
+                    Expr::Define(n, a, b, _) => Expr::Define(n, a, b, true),
+                    _ => panic!("E015"), // Only shapes and defines can be exported
                 }
             }
             Token::New => {

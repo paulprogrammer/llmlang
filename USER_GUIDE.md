@@ -42,10 +42,43 @@ echo $?
     clang my_c_code.c hello.ll -o combined_app
     ```
 
-## 4. Language Quick Reference
+## 4. Building Libraries
+
+To create a library that other projects (in `llmlang` or other languages) can consume:
+
+### Step 1: Use the `export` keyword
+Mark your functions and shapes for export.
+
+```llm
+// math_lib.llm
+export # Vec2 i64 i64
+export : add_vec2 !v1 !v2 
+  + get !v1 x 0 get !v2 x 0
+```
+
+### Step 2: Build the Library and Signatures
+Run the compiler with the `--emit-sig` flag to produce the object file and the token-efficient signature file.
+
+```bash
+llmlang math_lib.llm -o math_lib.o --emit-sig
+# Produces: math_lib.o and math_lib.llms
+```
+
+### Step 3: Consume in another project
+The LLM only needs to read `math_lib.llms` to understand how to call your library, saving context tokens.
+
+```llm
+// main.llm
+// (The LLM sees math_lib.llms and knows Vec2 and add_vec2 exist)
+: main
+  @ add_vec2 ...
+```
+
+## 5. Language Quick Reference
 
 | Operation | Syntax | Description |
 | :--- | :--- | :--- |
+| **Export** | `export ...` | Mark a definition for external consumption. |
 | **Apply** | `@ func arg` | Call a function (recursive calls allowed). |
 | **Branch** | `? cond t f` | Conditional branch (phi-merge). |
 | **Move** | `> ^index` | Consume a variable (Linear Ownership). |

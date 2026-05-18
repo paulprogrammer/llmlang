@@ -17,6 +17,8 @@ This document maps the token-efficient diagnostic codes emitted by the compiler 
 - **E011**: Function call returned void or invalid value.
 - **E012**: Only named function calls supported in Apply.
 - **E013**: Unknown identifier.
+- **E014**: Expansion parameter access error.
+- **E015**: Only shapes and defines can be exported.
 
 ## Warnings (W)
 - **W001**: Variable leaked; defined but never consumed (linear typing violation).

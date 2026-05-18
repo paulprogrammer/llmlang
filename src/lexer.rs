@@ -16,6 +16,7 @@ pub enum Token {
     New,       // new
     Get,       // get
     Set,       // set
+    Export,    // export
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -95,6 +96,7 @@ impl Lexer {
             "new" => Token::New,
             "get" => Token::Get,
             "set" => Token::Set,
+            "export" => Token::Export,
             _ => Token::Identifier(id_str),
         }
     }

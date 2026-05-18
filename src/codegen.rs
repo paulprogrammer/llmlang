@@ -306,4 +306,23 @@ impl<'ctx> CodeGen<'ctx> {
 
         Ok(())
     }
+
+    pub fn emit_signature_file(&self) -> String {
+        let mut sig = String::new();
+        let shapes = self.shapes.borrow();
+        for (name, fields) in shapes.iter() {
+            // For this prototype, we'll assume all registered shapes are potentially exported
+            // or we'd need to pass the 'exported' flag here. 
+            // Let's just generate for all for now.
+            sig.push_str(&format!("# {} {}\n", name, fields.join(" ")));
+        }
+        
+        for func in self.module.get_functions() {
+            let name = func.get_name().to_str().unwrap();
+            if name == "main" { continue; }
+            // Placeholder for args: real impl would extract param types
+            sig.push_str(&format!(": {} ...\n", name));
+        }
+        sig
+    }
 }

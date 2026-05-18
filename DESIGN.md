@@ -47,3 +47,9 @@
 * **Target Platforms:** Native Machine Code (x86_64, ARM) and WebAssembly (Wasm).
 * **Computational Power:** Turing Complete (achieved via conditional branching and recursive function calls).
 * **Parsing Strategy:** Hand-written Recursive Descent or PEG-based (using `pest`) to maintain absolute control over the dense, prefix-arity AST.
+
+## 9. Library & Package Management
+* **C ABI Default:** All exported functions use the standard C Calling Convention to ensure zero-cost interoperability with C, C++, Go, and Rust.
+* **Signature Files (`.llms`):** The compiler generates high-density "header" files containing only `# Shape` and `: Function` signatures (no bodies). Consuming LLMs only need to read these files, saving thousands of tokens per dependency.
+* **Content-Addressable Linking:** Packages are referenced in a local manifest by cryptographic hashes. The compiler automatically resolves these to the corresponding static (`.a`) or dynamic (`.so`) libraries.
+* **Zero-Conf Interop:** Because `llmlang` produces standard object files, other languages can link to it using their native toolchains (e.g., `extern "C"` in Rust or `extern` in C++).

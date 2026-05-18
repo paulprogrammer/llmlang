@@ -9,6 +9,7 @@
   * `@` : Application. `@ func arg1...` (Arity determined by definition).
   * `?` : Branching. `? cond true_expr false_expr`
   * `:` : Define. `: name arg1... body`
+  * `export` : Mark for library export. `export ...`
   * `#` : Shape (SoA). `# Name type1 type2...`
   * `>` : Move (Consume). `> ^index`
   * `&` : Borrow (Read). `& ^index`
