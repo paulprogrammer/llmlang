@@ -1,6 +1,6 @@
 #[derive(Debug, PartialEq, Clone, serde::Serialize)]
 pub enum Token {
-    Apply,     // @
+    Apply(usize), // @ or @2, @3...
     Add,       // +
     Sub,       // -
     Mul,       // *
@@ -49,7 +49,7 @@ impl Lexer {
         self.pos += 1;
 
         match ch {
-            '@' => Token::Apply,
+            '@' => self.lex_apply(),
             '+' => Token::Add,
             '-' => Token::Sub,
             '*' => Token::Mul,
@@ -72,6 +72,20 @@ impl Lexer {
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
             _ => panic!("Unexpected character: {}", ch),
         }
+    }
+
+    fn lex_apply(&mut self) -> Token {
+        let mut num_str = String::new();
+        while self.pos < self.input.len() && self.input[self.pos].is_digit(10) {
+            num_str.push(self.input[self.pos]);
+            self.pos += 1;
+        }
+        let arity = if num_str.is_empty() {
+            1
+        } else {
+            num_str.parse().unwrap_or(1)
+        };
+        Token::Apply(arity)
     }
 
     fn skip_whitespace(&mut self) {

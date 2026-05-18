@@ -79,7 +79,7 @@ The LLM only needs to read `math_lib.llms` to understand how to call your librar
 | Operation | Syntax | Description |
 | :--- | :--- | :--- |
 | **Export** | `X ...` | Mark a definition for external consumption. |
-| **Apply** | `@ func arg` | Call a function (recursive calls allowed). |
+| **Apply** | `@<n> func args` | Call a function with `<n>` arguments (defaults to 1). |
 | **Branch** | `? cond t f` | Conditional branch (phi-merge). |
 | **Move** | `> ^index` | Consume a variable (Linear Ownership). |
 | **Borrow** | `& ^index` | Read a variable without consuming. |

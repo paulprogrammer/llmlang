@@ -50,11 +50,23 @@ impl LLMLangMCPHandler {
 
         for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
             if entry.path().extension().and_then(|s| s.to_str()) == Some("llm") {
-                let content = std::fs::read_to_string(entry.path()).map_err(|e| e.to_string())?;
+                let content = match std::fs::read_to_string(entry.path()) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("Failed to read {}: {}", entry.path().display(), e);
+                        continue;
+                    }
+                };
                 let mut parser = Parser::new(Lexer::new(&content));
-                let expressions = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let expressions = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     parser.parse_module()
-                })).map_err(|_| format!("Failed to parse {}", entry.path().display()))?;
+                })) {
+                    Ok(exprs) => exprs,
+                    Err(_) => {
+                        eprintln!("Failed to parse {}", entry.path().display());
+                        continue;
+                    }
+                };
 
                 for expr in expressions {
                     match expr {
@@ -221,12 +233,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (read_tx, read_rx) = mpsc::channel::<String>(100);
     let (write_tx, mut write_rx) = mpsc::channel::<String>(100);
 
-    // Stdin reader
+    // Stdin reader with normalization shim
     tokio::spawn(async move {
         let stdin = stdin();
         let mut reader = BufReader::new(stdin).lines();
         while let Ok(Some(line)) = reader.next_line().await {
-            let _ = read_tx.send(line).await;
+            let normalized_line = if let Ok(mut val) = serde_json::from_str::<Value>(&line) {
+                let mut changed = false;
+                if let Some(method) = val.get("method").and_then(|v| v.as_str()) {
+                    if method == "initialize" {
+                        if let Some(params) = val.get_mut("params").and_then(|p| p.as_object_mut()) {
+                            if let Some(client_info) = params.remove("clientInfo") {
+                                params.insert("implementation".to_string(), client_info);
+                                changed = true;
+                            }
+                        }
+                    } else if method == "notifications/initialized" {
+                        val["method"] = json!("initialized");
+                        changed = true;
+                    }
+                }
+                if changed {
+                    serde_json::to_string(&val).unwrap_or(line)
+                } else {
+                    line
+                }
+            } else {
+                line
+            };
+            let _ = read_tx.send(normalized_line).await;
         }
     });
 

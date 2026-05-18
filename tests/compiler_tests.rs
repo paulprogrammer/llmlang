@@ -173,3 +173,84 @@ fn test_positive_import() {
     assert!(ir.contains("declare i64 @sin(i64)"));
     assert!(ir.contains("call i64 @sin(i64 %0)"));
 }
+
+#[test]
+fn test_positive_multi_arity_parsing() {
+    let input = "@2 add2 1 2";
+    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    if let Expr::Apply(func, args) = ast {
+        if let Expr::Identifier(name) = *func {
+            assert_eq!(name, "add2");
+        } else {
+            panic!("Expected identifier");
+        }
+        assert_eq!(args.len(), 2);
+    } else {
+        panic!("Expected Apply");
+    }
+}
+
+#[test]
+fn test_positive_multi_arity_codegen() {
+    let context = Context::create();
+    let input = ": add2 x y + ^1 ^0\n: main @2 add2 10 20";
+    let mut parser = Parser::new(Lexer::new(input));
+    let codegen = CodeGen::new(&context, "test");
+    
+    let exprs = parser.parse_module();
+    for expr in exprs {
+        match expr {
+            Expr::Define(name, params, body, _) => {
+                codegen.gen_function(&name, params, &body);
+            }
+            _ => {}
+        }
+    }
+    
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("define i64 @add2(i64 %0, i64 %1)"));
+    assert!(ir.contains("call i64 @add2(i64 10, i64 20)"));
+}
+
+#[test]
+fn test_positive_nested_multi_arity() {
+    let context = Context::create();
+    // f(x, y, z) = x + (y * z)
+    // @3 f 1 2 3
+    let input = ": f x y z + ^2 * ^1 ^0\n: main @3 f 1 2 3";
+    let mut parser = Parser::new(Lexer::new(input));
+    let codegen = CodeGen::new(&context, "test");
+    
+    let exprs = parser.parse_module();
+    for expr in exprs {
+        match expr {
+            Expr::Define(name, params, body, _) => {
+                codegen.gen_function(&name, params, &body);
+            }
+            _ => {}
+        }
+    }
+    
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("define i64 @f(i64 %0, i64 %1, i64 %2)"));
+    assert!(ir.contains("call i64 @f(i64 1, i64 2, i64 3)"));
+}
+
+#[test]
+fn test_positive_fingerprint_arity() {
+    let input1 = ": f1 x @ g ^0";
+    let input2 = ": f2 x y @2 g ^1 ^0";
+
+    let ast1 = Parser::new(Lexer::new(input1)).parse_expr();
+    let ast2 = Parser::new(Lexer::new(input2)).parse_expr();
+
+    let fp1 = ast1.structural_fingerprint();
+    let fp2 = ast2.structural_fingerprint();
+
+    // f1 and f2 should have different fingerprints due to arity
+    assert_ne!(fp1, fp2);
+    assert!(fp1.contains("@1"));
+    assert!(fp2.contains("@2"));
+}
+
+

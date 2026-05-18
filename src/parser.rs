@@ -98,8 +98,9 @@ impl Expr {
                 left.collect_fingerprint(s);
                 right.collect_fingerprint(s);
             }
-            Expr::Apply(_, args) => {
-                s.push_str("@");
+            Expr::Apply(func_expr, args) => {
+                s.push_str(&format!("@{}", args.len()));
+                func_expr.collect_fingerprint(s);
                 for arg in args {
                     arg.collect_fingerprint(s);
                 }
@@ -193,13 +194,13 @@ impl Parser {
                 let right = self.parse_expr();
                 Expr::BinaryOp(op, Box::new(left), Box::new(right))
             }
-            Token::Apply => {
+            Token::Apply(arity) => {
+                let arity = *arity;
                 self.consume(); // consume @
                 let func = self.parse_expr();
                 let mut args = Vec::new();
-                while self.current_token != Token::EOF && self.current_token != Token::Define && self.current_token != Token::Shape && self.current_token != Token::Let && self.current_token != Token::Import {
-                     args.push(self.parse_expr());
-                     if args.len() == 1 { break; } 
+                for _ in 0..arity {
+                    args.push(self.parse_expr());
                 }
                 Expr::Apply(Box::new(func), args)
             }

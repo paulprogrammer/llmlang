@@ -32,7 +32,7 @@
 
 ## 6. Primitive Operations Syntax
 * **Composite Approach:** The language uses a hybrid syntax to balance extreme token efficiency with LLM pre-training alignment.
-* **ASCII Symbols for Core Logic:** Base operators (math, borrow, move, apply, branch) are represented by single-character ASCII tokens (e.g., `+`, `>`, `&`, `@`, `?`). This guarantees 1 char = 1 token for the most frequent operations.
+* **ASCII Symbols for Core Logic:** Base operators (math, borrow, move, apply, branch) are represented by single-character ASCII tokens (e.g., `+`, `>`, `&`, `@`, `?`). The apply operator supports an optional numeric suffix for explicit arity (e.g., `@2`) to handle bracketless prefix notation. This guarantees 1 char = 1 token for the most frequent operations.
 * **Conditional Branching (`?`):** Implements `? cond true_branch false_branch`. Enforces linear stack consistency (both branches must leave the stack in the identical ownership state).
 * **Short Mnemonics for Built-ins:** Standard library functions and common structural built-ins use 3-to-4 letter ASCII mnemonics (e.g., `len`, `map`, `sys`, `new`, `get`, `set`).
 

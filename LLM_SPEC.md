@@ -6,7 +6,7 @@
 * **Tokens:** Single-char ASCII preferred.
 * **Operators:** 
   * `+`, `-`, `*`, `/` : Binary arithmetic.
-  * `@` : Application. `@ func arg1...` (Arity determined by definition).
+  * `@` : Application. `@<n> func arg1...` (Optional `<n>` for explicit arity).
   * `?` : Branching. `? cond true_expr false_expr`
   * `:` : Define. `: name arg1... body`
   * `X` : Export. `X ...`
