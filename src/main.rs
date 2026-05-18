@@ -5,13 +5,42 @@ use inkwell::context::Context;
 use std::env;
 use std::fs;
 use std::process;
-use std::collections::HashMap;
+
+fn print_help() {
+    println!("\
+llmlang v0.1.1
+The Turing-complete, polymorphic language optimized for LLM token usage and execution speed.
+
+USAGE:
+    llmlang <INPUT> [OPTIONS]
+
+ARGS:
+    <INPUT>             Path to the .llm source file
+
+OPTIONS:
+    -o <OUTPUT>         Path to the output file (object file by default)
+    -S, --emit-ir       Emit LLVM IR to stdout or to the file specified by -o
+    --emit-sig          Emit structural signature file (.llms) for indexing
+    -h, --help          Print help information
+    -V, --version       Print version information
+");
+}
+
+fn print_version() {
+    let llvm_version = inkwell::support::get_llvm_version();
+    println!("llmlang 0.1.1");
+    println!("Build Options:");
+    println!("  LLVM Version: {}.{}.{}", llvm_version.0, llvm_version.1, llvm_version.2);
+    println!("  Targets: all, webassembly");
+    println!("  Ownership: linear state checking enabled");
+    println!("  Optimization: monomorphization expansion enabled");
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     
     if args.len() < 2 {
-        eprintln!("Usage: {} <input.llm> [-o <output>] [--emit-ir] [--emit-sig]", args[0]);
+        print_help();
         process::exit(1);
     }
 
@@ -23,6 +52,14 @@ fn main() {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "-h" | "--help" => {
+                print_help();
+                process::exit(0);
+            }
+            "-V" | "--version" => {
+                print_version();
+                process::exit(0);
+            }
             "-o" => {
                 i += 1;
                 if i < args.len() {
@@ -38,7 +75,10 @@ fn main() {
             path if !path.starts_with('-') => {
                 input_path = Some(path);
             }
-            _ => {}
+            _ => {
+                eprintln!("Unknown argument: {}", args[i]);
+                process::exit(1);
+            }
         }
         i += 1;
     }

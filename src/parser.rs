@@ -331,7 +331,6 @@ impl Parser {
                 }
             }
             Token::EOF => panic!("E000"),
-            _ => panic!("E001"),
         }
     }
 

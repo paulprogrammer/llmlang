@@ -219,7 +219,7 @@ impl<'ctx> CodeGen<'ctx> {
                         
                         let initial_stack_len = stack.len();
                         let mut new_expand_map = HashMap::new();
-                        for (i, (param, val)) in params.iter().zip(args_vals.into_iter()).enumerate() {
+                        for (param, val) in params.iter().zip(args_vals.into_iter()) {
                             stack.push(StackItem { value: val, state: VariableState::Available });
                             if param.expand {
                                 new_expand_map.insert(param.name.clone(), stack.len() - 1);
