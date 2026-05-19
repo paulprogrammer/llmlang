@@ -61,6 +61,12 @@ jobs:
     - name: Build release binaries
       run: cargo build --release --verbose
 
+    - name: Run tests (Rust)
+      run: cargo test --release --verbose
+
+    - name: Run tests (Self-hosted)
+      run: ./llm-test
+
     - name: Prepare assets
       run: |
         mkdir -p dist

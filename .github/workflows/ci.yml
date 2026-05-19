@@ -37,5 +37,8 @@ jobs:
     - name: Build
       run: cargo build --verbose
 
-    - name: Run tests
+    - name: Run Rust tests
       run: cargo test --verbose
+
+    - name: Run self-hosted lang tests
+      run: ./llm-test
