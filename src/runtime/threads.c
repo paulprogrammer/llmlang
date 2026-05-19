@@ -1,7 +1,8 @@
 #include "common.h"
 
-#define MAX_THREADS 8
-#define QUEUE_SIZE 64
+// Defined as global constants in the LLVM module
+extern const long llm_max_threads;
+extern const long llm_queue_size;
 
 typedef struct {
     void* (*fn)(void*);
@@ -13,11 +14,11 @@ typedef struct {
 } llm_work_item_t;
 
 typedef struct {
-    llm_work_item_t queue[QUEUE_SIZE];
+    llm_work_item_t* queue;
     int head, tail, count;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-    pthread_t threads[MAX_THREADS];
+    pthread_t* threads;
     int shutdown;
 } llm_pool_t;
 
@@ -34,7 +35,7 @@ void* llm_worker(void* arg) {
             break;
         }
         llm_work_item_t work = pool->queue[pool->head];
-        pool->head = (pool->head + 1) % QUEUE_SIZE;
+        pool->head = (pool->head + 1) % llm_queue_size;
         pool->count--;
         pthread_mutex_unlock(&pool->mutex);
 
@@ -52,9 +53,12 @@ void* llm_worker(void* arg) {
 void llm_init_pool() {
     if (pool) return;
     pool = calloc(1, sizeof(llm_pool_t));
+    pool->queue = calloc(llm_queue_size, sizeof(llm_work_item_t));
+    pool->threads = calloc(llm_max_threads, sizeof(pthread_t));
+    
     pthread_mutex_init(&pool->mutex, NULL);
     pthread_cond_init(&pool->cond, NULL);
-    for (int i = 0; i < MAX_THREADS; i++) {
+    for (int i = 0; i < llm_max_threads; i++) {
         pthread_create(&pool->threads[i], NULL, llm_worker, NULL);
     }
 }
@@ -74,7 +78,7 @@ long llm_fork(long fn_ptr, long arg_ptr) {
     pthread_cond_init(&handle->cond, NULL);
 
     pthread_mutex_lock(&pool->mutex);
-    if (pool->count < QUEUE_SIZE) {
+    if (pool->count < llm_queue_size) {
         llm_work_item_t* work = &pool->queue[pool->tail];
         work->fn = (void* (*)(void*))fn_ptr;
         work->arg = (void*)arg_ptr;
@@ -82,7 +86,7 @@ long llm_fork(long fn_ptr, long arg_ptr) {
         work->task_mutex = &handle->mutex;
         work->task_cond = &handle->cond;
         work->done = &handle->done;
-        pool->tail = (pool->tail + 1) % QUEUE_SIZE;
+        pool->tail = (pool->tail + 1) % llm_queue_size;
         pool->count++;
         pthread_cond_signal(&pool->cond);
         pthread_mutex_unlock(&pool->mutex);

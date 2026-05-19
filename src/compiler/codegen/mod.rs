@@ -7,6 +7,7 @@ use crate::compiler::lexer::Token;
 use std::collections::HashMap;
 use inkwell::targets::{Target, TargetMachine, InitializationConfig, FileType};
 use inkwell::OptimizationLevel;
+use crate::Config;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VariableState {
@@ -30,12 +31,24 @@ pub struct CodeGen<'ctx> {
     pub shapes: std::cell::RefCell<HashMap<String, Vec<String>>>,
     pub warnings: std::cell::RefCell<Vec<String>>,
     pub templates: std::cell::RefCell<HashMap<String, (Vec<Param>, Expr)>>,
+    pub config: Config,
 }
 
 impl<'ctx> CodeGen<'ctx> {
-    pub fn new(context: &'ctx Context, module_name: &str) -> Self {
+    pub fn new(context: &'ctx Context, module_name: &str, config: Config) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
+        
+        // Emit runtime configuration as global constants
+        let i64_type = context.i64_type();
+        let threads_global = module.add_global(i64_type, None, "llm_max_threads");
+        threads_global.set_initializer(&i64_type.const_int(config.max_threads as u64, false));
+        threads_global.set_constant(true);
+
+        let queue_global = module.add_global(i64_type, None, "llm_queue_size");
+        queue_global.set_initializer(&i64_type.const_int(config.queue_size as u64, false));
+        queue_global.set_constant(true);
+
         Self { 
             context, 
             module, 
@@ -43,6 +56,7 @@ impl<'ctx> CodeGen<'ctx> {
             shapes: std::cell::RefCell::new(HashMap::new()),
             warnings: std::cell::RefCell::new(Vec::new()),
             templates: std::cell::RefCell::new(HashMap::new()),
+            config,
         }
     }
 
@@ -143,7 +157,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.get_call_res(call)
     }
 
-    fn gen_trap_sub_fn(&self, expr: &Expr, stack: &mut Vec<StackItem<'ctx>>, expand_map: &HashMap<String, usize>, captures: &[(usize, BasicValueEnum<'ctx>, Option<String>, bool)], name: &str) -> FunctionValue<'ctx> {
+    fn gen_trap_sub_fn(&self, expr: &Expr, _stack: &mut Vec<StackItem<'ctx>>, expand_map: &HashMap<String, usize>, captures: &[(usize, BasicValueEnum<'ctx>, Option<String>, bool)], name: &str) -> FunctionValue<'ctx> {
         let i64_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
         let task_fn_type = self.context.i64_type().fn_type(&[i64_ptr.into()], false);
         let task_fn = self.module.add_function(name, task_fn_type, None);
@@ -213,7 +227,7 @@ impl<'ctx> CodeGen<'ctx> {
                 item.value
             }
             Expr::BinaryOp(op, left, right) => {
-                let parallel_threshold = 50;
+                let parallel_threshold = self.config.parallel_threshold;
                 let mut left_handle = None;
                 if left.is_pure() && left.complexity() > parallel_threshold {
                     left_handle = Some(self.gen_parallel_expr(left, stack, expand_map));
@@ -395,7 +409,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let template_opt = self.templates.borrow().get(name).cloned();
                     let mut args_vals = Vec::new();
                     let mut handles = Vec::new();
-                    let parallel_threshold = 50;
+                    let parallel_threshold = self.config.parallel_threshold;
                     for (i, arg) in args.iter().enumerate() {
                         if i < args.len() - 1 && arg.is_pure() && arg.complexity() > parallel_threshold {
                             handles.push((i, self.gen_parallel_expr(arg, stack, expand_map)));

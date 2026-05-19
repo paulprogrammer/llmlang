@@ -22,6 +22,10 @@ OPTIONS:
     -o <OUTPUT>         Path to the output file (object file by default)
     -S, --emit-ir       Emit LLVM IR to stdout or to the file specified by -o
     --emit-sig          Emit structural signature file (.llms) for indexing
+    -c, --config <FILE> Path to a JSON configuration file
+    --parallel <NUM>    Set the complexity threshold for auto-parallelism (default: 50)
+    --threads <NUM>     Set the number of worker threads (default: 8)
+    --queue <NUM>       Set the thread pool queue size (default: 64)
     -h, --help          Print help information
     -V, --version       Print version information
 ", env!("CARGO_PKG_VERSION"));
@@ -49,6 +53,7 @@ fn main() {
     let mut output_path = None;
     let mut emit_ir = false;
     let mut emit_sig = false;
+    let mut config = llmlang::Config::default();
 
     let mut i = 1;
     while i < args.len() {
@@ -65,6 +70,37 @@ fn main() {
                 i += 1;
                 if i < args.len() {
                     output_path = Some(&args[i]);
+                }
+            }
+            "-c" | "--config" => {
+                i += 1;
+                if i < args.len() {
+                    let config_str = fs::read_to_string(&args[i]).unwrap_or_else(|_| {
+                        eprintln!("Could not read config file {}", args[i]);
+                        process::exit(1);
+                    });
+                    config = serde_json::from_str(&config_str).unwrap_or_else(|e| {
+                        eprintln!("Could not parse config file {}: {}", args[i], e);
+                        process::exit(1);
+                    });
+                }
+            }
+            "--parallel" => {
+                i += 1;
+                if i < args.len() {
+                    config.parallel_threshold = args[i].parse().unwrap_or(50);
+                }
+            }
+            "--threads" => {
+                i += 1;
+                if i < args.len() {
+                    config.max_threads = args[i].parse().unwrap_or(8);
+                }
+            }
+            "--queue" => {
+                i += 1;
+                if i < args.len() {
+                    config.queue_size = args[i].parse().unwrap_or(64);
                 }
             }
             "--emit-ir" | "-S" => {
@@ -84,17 +120,17 @@ fn main() {
         i += 1;
     }
 
-    let input_path = input_path.expect("E998: No input file specified");
-    let input = fs::read_to_string(input_path).unwrap_or_else(|_| {
-        eprintln!("E999: Could not read file {}", input_path);
+    let input_path_str = input_path.expect("E998: No input file specified");
+    let input = fs::read_to_string(input_path_str).unwrap_or_else(|_| {
+        eprintln!("E999: Could not read file {}", input_path_str);
         process::exit(1);
     });
 
     let context = Context::create();
-    let codegen = CodeGen::new(&context, input_path);
+    let codegen = CodeGen::new(&context, input_path_str, config);
 
     let lexer = Lexer::new(&input);
-    let mut parser = Parser::new(lexer, input_path.to_string());
+    let mut parser = Parser::new(lexer, input_path_str.to_string());
     
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let expressions = parser.parse_module();
@@ -122,7 +158,7 @@ fn main() {
         let sig = codegen.emit_signature_file();
         let sig_path = match output_path {
             Some(p) => format!("{}.llms", p),
-            None => format!("{}.llms", input_path),
+            None => format!("{}.llms", input_path_str),
         };
         fs::write(sig_path, sig).expect("Could not write signature file");
     }

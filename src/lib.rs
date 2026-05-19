@@ -4,3 +4,22 @@ pub mod compiler {
     pub mod parser;
     pub mod codegen;
 }
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Config {
+    pub parallel_threshold: usize,
+    pub max_threads: usize,
+    pub queue_size: usize,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            parallel_threshold: 50,
+            max_threads: 8,
+            queue_size: 64,
+        }
+    }
+}
