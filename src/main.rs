@@ -133,7 +133,11 @@ fn main() {
     let mut parser = Parser::new(lexer, input_path_str.to_string());
     
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let expressions = parser.parse_module();
+        let mut expressions = parser.parse_module();
+        
+        // 1. Dead Function Elimination (DFE)
+        expressions = llmlang::compiler::analysis::prune_dead_code(expressions);
+
         for expr in expressions {
             match expr {
                 Expr::Shape(name, fields, _exported) => {

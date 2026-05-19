@@ -101,8 +101,14 @@ impl Expr {
                 expr.collect_calls(calls);
             }
             Expr::Trap(t, f) => { t.collect_calls(calls); f.collect_calls(calls); }
-            Expr::Map(e, _, f) => { e.collect_calls(calls); f.collect_calls(calls); }
-            Expr::Filter(e, f) => { e.collect_calls(calls); f.collect_calls(calls); }
+            Expr::Map(e, _, f) => { 
+                if let Expr::Identifier(name) = &**f { calls.push(name.clone()); }
+                e.collect_calls(calls); f.collect_calls(calls); 
+            }
+            Expr::Filter(e, f) => { 
+                if let Expr::Identifier(name) = &**f { calls.push(name.clone()); }
+                e.collect_calls(calls); f.collect_calls(calls); 
+            }
             Expr::Define(_, _, body, _) => {
                 body.collect_calls(calls);
             }
@@ -234,4 +240,63 @@ impl Expr {
             Expr::Trap(t, f) => { s.push_str("🛡️"); t.collect_fingerprint(s); f.collect_fingerprint(s); }
         }
     }
+}
+
+use std::collections::HashSet;
+
+pub fn prune_dead_code(expressions: Vec<Expr>) -> Vec<Expr> {
+    let mut reachable = HashSet::new();
+    let mut to_visit = Vec::new();
+
+    // 1. Identify roots (main and exported symbols)
+    for expr in &expressions {
+        match expr {
+            Expr::Define(name, _, _, exported) => {
+                if name == "main" || *exported {
+                    reachable.insert(name.clone());
+                    to_visit.push(expr);
+                }
+            }
+            Expr::Shape(_, _, exported) => {
+                if *exported {
+                    // Shapes don't have calls but might be exported for signature.
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // 2. Transitive closure of call graph
+    let mut visited = HashSet::new();
+    while let Some(expr) = to_visit.pop() {
+        let calls = expr.get_calls();
+        for call in calls {
+            if !reachable.contains(&call) {
+                reachable.insert(call.clone());
+            }
+        }
+        
+        // Mark as visited so we don't process same definition twice
+        if let Expr::Define(name, _, _, _) = expr {
+            visited.insert(name.clone());
+        }
+
+        // Find any newly reachable definitions to visit
+        for def in &expressions {
+            if let Expr::Define(name, _, _, _) = def {
+                if reachable.contains(name) && !visited.contains(name) {
+                    to_visit.push(def);
+                }
+            }
+        }
+    }
+
+    // 3. Filter expressions
+    expressions.into_iter().filter(|expr| {
+        match expr {
+            Expr::Define(name, _, _, _) => reachable.contains(name),
+            Expr::Import(_, symbol) => reachable.contains(symbol),
+            _ => true, // Keep Shapes, etc.
+        }
+    }).collect()
 }

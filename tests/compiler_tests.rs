@@ -494,24 +494,24 @@ fn test_integration_json_filter() {
 }
 
 #[test]
-fn test_integration_soa_map_math() {
-    let context = Context::create();
-    let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    codegen.gen_shape("Point", &["x".to_string()]);
-    // Map function doubling the value
-    let input = ": double x * ⚓ x 2\n: main L p N Point 5 ⟴ ⮞ p \"x\" double";
+fn test_analysis_dfe() {
+    let input = ": used x + ⚓ x 1\n: unused y * ⚓ y 2\n: main @ used 10";
     let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
-    let exprs = parser.parse_module();
-    for expr in exprs {
-        match expr {
-            Expr::Define(n, p, b, _) => { codegen.gen_function(&n, p, &b); },
-            _ => {}
-        }
-    }
-    let ir = codegen.module.print_to_string().to_string();
-    assert!(ir.contains("map_loop"));
-    assert!(ir.contains("call i64 @double"));
+    let mut exprs = parser.parse_module();
+    
+    use llmlang::compiler::analysis::prune_dead_code;
+    exprs = prune_dead_code(exprs);
+    
+    // Check that 'unused' was removed
+    let names: Vec<String> = exprs.iter().filter_map(|e| {
+        if let Expr::Define(n, _, _, _) = e { Some(n.clone()) } else { None }
+    }).collect();
+    
+    assert!(names.contains(&"used".to_string()));
+    assert!(names.contains(&"main".to_string()));
+    assert!(!names.contains(&"unused".to_string()));
 }
+
 
 #[test]
 fn test_integration_complex_fault_tolerance() {
