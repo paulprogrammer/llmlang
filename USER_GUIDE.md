@@ -78,10 +78,36 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
 | **System** | `📥 h`, `📤 h s` | Read/Write to/from file handles. |
 | **Stringify**| `🧵 i64` | Convert integer to string. |
 | **Split** | `🪓 s d idx` | Extract segment by delimiter. |
+| **JSON** | `📦 inst`, `📦2 json "Shape"` | Serialize to/Deserialize from JSON. |
+| **Map** | `⟴ inst "f" func` | Map function over SoA column. |
+| **Filter** | `▽ inst func` | Filter SoA instance by predicate. |
+| **Money** | `💰+`, `💰-`, `💰*`, `💰/` | Fixed-point precision math. |
+| **MoneyStr**| `💰🧵 money` | Format money value to string. |
+| **Panic** | `🚨 message` | Abort execution with error message. |
 | **Time** | `🕒`, `📅`, `📆` | TAI64 and Calendar primitives. |
+| **TimeZone**| `🕒🌍` | Get local timezone name. |
 | **Env** | `🌍 key` | Access system environment variables. |
 | **Sequence** | `. e1 e2` | Evaluate e1 then e2, returning e2. |
 
-## 5. Understanding Diagnostics
+## 5. Business Logic Example
+
+```llm
+# Invoice id i64 amount i64
+
+: process_tax inv
+    💰* ⚓ inv 💰1.15  // 15% Tax
+
+: main
+    L i N Invoice 1
+    . S ⚓ i id 101
+    . S ⚓ i amount 💰1000.00
+    L taxed ⟴ ⮞ i "amount" process_tax
+    L total ⚓ taxed amount 0
+    L msg ⧉ "Total with Tax: " 💰🧵 ⮞ total
+    . 📤 1 ⮞ msg
+    0
+```
+
+## 6. Understanding Diagnostics
 
 If the compiler outputs a code like `E005` or `W001`, refer to [DIAGNOSTICS.md](./DIAGNOSTICS.md) for the human-readable mapping. These codes are optimized to save LLM tokens.

@@ -7,7 +7,7 @@ humans acting as the product owners, and the LLM acting
 as the developer.
 
 ## Overview
-`llmlang` is a Turing-complete, polymorphic language optimized for LLM token usage and speed. Features include a prefix-arity AST, SoA memory, linear ownership, and an LLVM backend. The toolchain provides a unified Clang driver and an MCP server for structural search, enabling high-efficiency autonomous software engineering for AI agents.
+`llmlang` is a Turing-complete, polymorphic language optimized for LLM token usage and speed. Features include a prefix-arity AST, SoA memory, linear ownership, and an LLVM backend. The language provides a **Next-Gen Business Core** including native JSON serialization, precision math (Money), and functional iterators (Map/Filter), along with an MCP server for structural search, enabling high-efficiency autonomous software engineering for AI agents.
 
 ## Documentation
 - **[LLM Specification](./LLM_SPEC.md):** High-density language rules designed specifically for AI consumption.

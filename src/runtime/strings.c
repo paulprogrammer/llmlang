@@ -83,3 +83,12 @@ long llm_split(long s, long d, long index) {
     free(copy);
     return (long)strdup("");
 }
+
+long llm_money_format(long val) {
+    char buf[64];
+    long whole = val / 10000;
+    long frac = val % 10000;
+    if (frac < 0) frac = -frac;
+    sprintf(buf, "%ld.%04ld", whole, frac);
+    return (long)strdup(buf);
+}

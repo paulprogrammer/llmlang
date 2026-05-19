@@ -36,6 +36,11 @@ pub enum Token {
     Write,     // 📤
     Str,       // 🧵
     Split,     // 🪓
+    Pack(usize), // 📦
+    Map,       // ⟴
+    Filter,    // ▽
+    Money,     // 💰
+    Panic,     // 🚨
     TimeNow,   // 🕒
     TimeGet,   // 📅
     TimeSet,   // 📆
@@ -72,7 +77,7 @@ impl Lexer {
         self.pos += 1;
 
         match ch {
-            '@' => self.lex_apply(),
+            '@' => self.lex_arity_token(Token::Apply(1)),
             '+' => Token::Add,
             '-' => Token::Sub,
             '*' => Token::Mul,
@@ -97,19 +102,24 @@ impl Lexer {
             'L' => Token::Let,
             'I' => Token::Import,
             '^' => self.lex_xor_or_debruijn(),
-            'ℓ' => Token::Len,
-            '⧉' => Token::Cat,
-            '✂' => Token::Sub,
-            '🔍' => Token::Loc,
-            '≈' => Token::Reg,
-            '📥' => Token::Read,
-            '📤' => Token::Write,
-            '🧵' => Token::Str,
-            '🪓' => Token::Split,
-            '🕒' => Token::TimeNow,
-            '📅' => Token::TimeGet,
-            '📆' => Token::TimeSet,
-            '🌍' => Token::Env,
+            '\u{2113}' => Token::Len,
+            '\u{29C9}' => Token::Cat,
+            '\u{2702}' => Token::StrSub,
+            '\u{1F50D}' => Token::Loc,
+            '\u{2248}' => Token::Reg,
+            '\u{1F4E5}' => Token::Read,
+            '\u{1F4E4}' => Token::Write,
+            '\u{1F9F5}' => Token::Str,
+            '\u{1FA93}' => Token::Split,
+            '\u{1F4E6}' => self.lex_arity_token(Token::Pack(1)),
+            '\u{27F4}' => Token::Map,
+            '\u{25BD}' => Token::Filter,
+            '\u{1F4B0}' => Token::Money,
+            '\u{1F6A8}' => Token::Panic,
+            '\u{1F552}' => Token::TimeNow,
+            '\u{1F4C5}' => Token::TimeGet,
+            '\u{1F4C6}' => Token::TimeSet,
+            '\u{1F30D}' => Token::Env,
             '"' => self.lex_string(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
@@ -117,18 +127,22 @@ impl Lexer {
         }
     }
 
-    fn lex_apply(&mut self) -> Token {
+    fn lex_arity_token(&mut self, default: Token) -> Token {
         let mut num_str = String::new();
         while self.pos < self.input.len() && self.input[self.pos].is_digit(10) {
             num_str.push(self.input[self.pos]);
             self.pos += 1;
         }
-        let arity = if num_str.is_empty() {
-            1
+        if num_str.is_empty() {
+            default
         } else {
-            num_str.parse().unwrap_or(1)
-        };
-        Token::Apply(arity)
+            let arity = num_str.parse().unwrap_or(1);
+            match default {
+                Token::Apply(_) => Token::Apply(arity),
+                Token::Pack(_) => Token::Pack(arity),
+                _ => default,
+            }
+        }
     }
 
     fn skip_whitespace(&mut self) {

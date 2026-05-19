@@ -32,15 +32,17 @@
 * **UTF-8 Symbols for Core Logic:** Base operators use single-character tokens (e.g., `+`, `⮞`, `⚓`, `@`, `?`, `.`). 
 * **Sequence Operator (`.`):** Implements `. expr1 expr2`, allowing multiple statements to be executed in order within a single-expression body.* **String Operations:** Native string support using UTF-8 symbols for length (`ℓ`), concatenation (`⧉`), substring (`✂`), location (`🔍`), regex match (`≈`), and split (`🪓`).
 * **System I/O:** Explicit handle-based primitives for reading (`📥`) and writing (`📤`).
+* **Business Primitives:** High-level support for JSON (`📦`), iterative processing (`⟴`, `▽`), and precision math (`💰`) for financial applications.
+* **Error Handling:** Explicit panic mechanism (`🚨`) for non-recoverable states.
 * **Environment Access:** System-level configuration access via the `🌍` operator.
-* **Temporal Logic:** High-precision TAI64 labels and calendar primitives (`🕒`, `📅`, `📆`) based on the `libtai` baseline.
+* **Temporal Logic:** High-precision TAI64 labels and calendar primitives (`🕒`, `📅`, `📆`) based on the `libtai` baseline, including local timezone resolution (`🕒🌍`).
 
 ## 7. Implementation Details
 * **Implementation Language:** Rust.
 * **Compiler Backend:** LLVM via the `inkwell` crate.
-* **Runtime Support:** A managed C runtime (`src/rt.c`) provides:
+* **Runtime Support:** A modular C runtime (`src/runtime/`) provides:
   * A task-based **Thread Pool** for automatic parallelism.
-  * Heap-allocated string operations.
+  * Heap-allocated string and JSON operations.
   * POSIX regex support.
   * TAI64 temporal math and leap-second-agnostic calendar logic.
 * **Computational Power:** Turing Complete.

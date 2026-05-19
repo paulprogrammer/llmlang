@@ -1,0 +1,18 @@
+// json_test.llm
+# User id age
+
+: main
+    L u N User 2
+    . S ⚓ u id 0 101
+    . S ⚓ u id 1 102
+    . S ⚓ u age 0 30
+    . S ⚓ u age 1 40
+    
+    L json 📦 ⚓ u
+    . 📤 1 ⧉ "Serialized: " ⧉ ⚓ json "\n"
+    
+    L u2 📦2 ⮞ json "User"
+    . 📤 1 ⧉ "Unpacked ID 0: " ⧉ 🧵 G ⚓ u2 id 0 "\n"
+    . 📤 1 ⧉ "Unpacked ID 1: " ⧉ 🧵 G ⚓ u2 id 1 "\n"
+    . 📤 1 ⧉ "Unpacked Age 0: " ⧉ 🧵 G ⚓ u2 age 0 "\n"
+    📤 1 ⧉ "Unpacked Age 1: " ⧉ 🧵 G ⮞ u2 age 1 "\n"

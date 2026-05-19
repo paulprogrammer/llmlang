@@ -23,3 +23,9 @@ long llm_getenv(long k) {
     if (!val) return (long)strdup("");
     return (long)strdup(val);
 }
+
+void llm_panic(long msg) {
+    char* s = (char*)msg;
+    fprintf(stderr, "🚨 PANIC: %s\n", s ? s : "Unknown error");
+    exit(1);
+}

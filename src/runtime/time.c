@@ -46,3 +46,29 @@ long llm_tai_set(long y, long m, long d, long h, long mn, long s) {
     long days = (long)(365 * year + year / 4 - year / 100 + year / 400 + (306 * (m + 1)) / 10 - 428 + d - 1);
     return TAI_OFFSET + days * 86400 + h * 3600 + mn * 60 + s;
 }
+
+long llm_timezone() {
+    char* tz = getenv("TZ");
+    if (tz) return (long)strdup(tz);
+
+    FILE* f = fopen("/etc/timezone", "r");
+    if (f) {
+        char buf[128];
+        if (fgets(buf, sizeof(buf), f)) {
+            buf[strcspn(buf, "\n")] = 0;
+            fclose(f);
+            return (long)strdup(buf);
+        }
+        fclose(f);
+    }
+
+    char link[256];
+    ssize_t len = readlink("/etc/localtime", link, sizeof(link)-1);
+    if (len != -1) {
+        link[len] = '\0';
+        char* p = strstr(link, "zoneinfo/");
+        if (p) return (long)strdup(p + 9);
+    }
+
+    return (long)strdup("UTC");
+}

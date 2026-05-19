@@ -1,0 +1,4 @@
+// panic_test.llm
+: main
+    . 📤 1 "Testing panic...\n"
+    🚨 "Critical Failure!"
