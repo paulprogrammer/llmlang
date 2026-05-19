@@ -16,9 +16,18 @@ use llmlang::compiler::ast::Expr;
 use sha2::{Sha256, Digest};
 use tokio::io::{stdin, stdout, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+const LLM_SPEC: &str = include_str!("../../LLM_SPEC.md");
+const LANGUAGE_FUNDAMENTALS: &str = include_str!("../../LANGUAGE_FUNDAMENTALS.md");
+
+struct SymbolMetadata {
+    expr: Expr,
+    path: String,
+    line: usize,
+}
+
 struct CodebaseIndex {
-    functions: HashMap<String, Expr>,
-    shapes: HashMap<String, Vec<String>>,
+    functions: HashMap<String, SymbolMetadata>,
+    shapes: HashMap<String, (Vec<String>, String, usize)>,
     call_graph: HashMap<String, Vec<String>>,
     fingerprints: HashMap<String, Vec<String>>, // hash -> [function_names]
 }
@@ -78,13 +87,17 @@ impl LLMLangMCPHandler {
                             hasher.update(&fp);
                             let hash = hex::encode(hasher.finalize());
 
-                            index.functions.insert(name.clone(), *body);
+                            index.functions.insert(name.clone(), SymbolMetadata {
+                                expr: *body,
+                                path: entry.path().display().to_string(),
+                                line: 0, // Rough estimation or we'd need AST pos
+                            });
                             index.call_graph.insert(name.clone(), calls);
                             index.fingerprints.entry(hash).or_default().push(name.clone());
                             count += 1;
                         }
                         Expr::Shape(name, fields, _) => {
-                            index.shapes.insert(name, fields);
+                            index.shapes.insert(name, (fields, entry.path().display().to_string(), 0));
                         }
                         _ => {}
                     }
@@ -104,11 +117,49 @@ impl ServerHandler for LLMLangMCPHandler {
     ) -> Result<ServerCapabilities, Error> {
         let mut caps = ServerCapabilities::default();
         caps.tools = Some(json!({}));
+        caps.resources = Some(json!({}));
         Ok(caps)
     }
 
     async fn handle_method(&self, method: &str, params: Option<Value>) -> Result<Value, Error> {
         match method {
+            "resources/list" => {
+                let resources = json!([
+                    {
+                        "uri": "llm://spec",
+                        "name": "llmlang Specification",
+                        "mimeType": "text/markdown",
+                        "description": "The token-by-token grammar and operator specification"
+                    },
+                    {
+                        "uri": "llm://fundamentals",
+                        "name": "Language Fundamentals",
+                        "mimeType": "text/markdown",
+                        "description": "Dense concept mapping and UTF-8 cheat sheet for zero-shot learning"
+                    }
+                ]);
+                Ok(json!({ "resources": resources }))
+            }
+            "resources/read" => {
+                let params = params.ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing params"))?;
+                let uri = params.get("uri").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing uri"))?;
+                
+                let content = match uri {
+                    "llm://spec" => LLM_SPEC,
+                    "llm://fundamentals" => LANGUAGE_FUNDAMENTALS,
+                    _ => return Err(Error::protocol(ErrorCode::InvalidParams, format!("Unknown resource: {}", uri))),
+                };
+
+                Ok(json!({
+                    "contents": [
+                        {
+                            "uri": uri,
+                            "mimeType": "text/markdown",
+                            "text": content
+                        }
+                    ]
+                }))
+            }
             "tools/list" => {
                 let tools = json!([
                     {
@@ -131,6 +182,28 @@ impl ServerHandler for LLMLangMCPHandler {
                                 "query": { "type": "string" }
                             },
                             "required": ["query"]
+                        }
+                    },
+                    {
+                        "name": "get_definition",
+                        "description": "Returns the AST and location of a function or shape",
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {
+                                "name": { "type": "string" }
+                            },
+                            "required": ["name"]
+                        }
+                    },
+                    {
+                        "name": "get_diagnostics",
+                        "description": "Runs parser and analysis on a file and returns errors",
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string" }
+                            },
+                            "required": ["path"]
                         }
                     },
                     {
@@ -189,6 +262,48 @@ impl ServerHandler for LLMLangMCPHandler {
                             "content": [MessageContent::Text { text: results.join("\n") }]
                         }))
                     }
+                    "get_definition" => {
+                        let name = args.get("name").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing name"))?;
+                        let index = self.index.read().await;
+                        if let Some(meta) = index.functions.get(name) {
+                            Ok(json!({
+                                "content": [MessageContent::Text { 
+                                    text: format!("Function: {}\nPath: {}\nLine: {}\nAST: {:?}", name, meta.path, meta.line, meta.expr) 
+                                }]
+                            }))
+                        } else if let Some((fields, path, line)) = index.shapes.get(name) {
+                            Ok(json!({
+                                "content": [MessageContent::Text { 
+                                    text: format!("Shape: {}\nPath: {}\nLine: {}\nFields: {:?}", name, path, line, fields) 
+                                }]
+                            }))
+                        } else {
+                            Err(Error::protocol(ErrorCode::InvalidParams, "Symbol not found"))
+                        }
+                    }
+                    "get_diagnostics" => {
+                        let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing path"))?;
+                        let content = std::fs::read_to_string(path).map_err(|e| Error::protocol(ErrorCode::InternalError, e.to_string()))?;
+                        let mut parser = Parser::new(Lexer::new(&content), path.to_string());
+                        
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            parser.parse_module()
+                        }));
+
+                        match result {
+                            Ok(_) => Ok(json!({
+                                "content": [MessageContent::Text { text: "No errors found".to_string() }]
+                            })),
+                            Err(e) => {
+                                let msg = if let Some(s) = e.downcast_ref::<&str>() { s.to_string() }
+                                          else if let Some(s) = e.downcast_ref::<String>() { s.clone() }
+                                          else { "Unknown error".to_string() };
+                                Ok(json!({
+                                    "content": [MessageContent::Text { text: format!("Error: {}", msg) }]
+                                }))
+                            }
+                        }
+                    }
                     "find_callers" => {
                         let symbol = args.get("symbol").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing symbol"))?;
                         let index = self.index.read().await;
@@ -205,9 +320,9 @@ impl ServerHandler for LLMLangMCPHandler {
                     "structural_search" => {
                         let function_name = args.get("function_name").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing function_name"))?;
                         let index = self.index.read().await;
-                        let expr = index.functions.get(function_name).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Function not found"))?;
+                        let meta = index.functions.get(function_name).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Function not found"))?;
                         
-                        let fp = expr.structural_fingerprint();
+                        let fp = meta.expr.structural_fingerprint();
                         let mut hasher = Sha256::new();
                         hasher.update(&fp);
                         let hash = hex::encode(hasher.finalize());

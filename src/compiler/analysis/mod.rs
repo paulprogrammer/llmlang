@@ -1,5 +1,4 @@
 use crate::compiler::ast::{Expr};
-use crate::compiler::lexer::Token;
 
 impl Expr {
     pub fn returns_ptr(&self) -> bool {

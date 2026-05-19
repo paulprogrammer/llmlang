@@ -15,12 +15,21 @@ Instead of generic text embeddings, `llm-mcp` generates **Structural Fingerprint
 - It hashes the "shape" of the logic (operators and control flow) while ignoring variable names and literal values.
 - This allows an LLM to search for "code that does the same thing" even if the naming is completely different.
 
+## Resources Provided
+
+| URI | Description |
+| :--- | :--- |
+| `llm://spec` | The formal token-by-token grammar and operator specification. |
+| `llm://fundamentals` | Dense concept mapping and UTF-8 cheat sheet for zero-shot bootstrapping. |
+
 ## Tools Provided
 
 | Tool | Description |
 | :--- | :--- |
 | `analyze_codebase` | Recursively parses all `.llm` files in a directory and builds the index. |
 | `search_symbols` | Returns all functions or shapes matching a name query. |
+| `get_definition` | Returns the **realized AST** and file location of a function or shape. |
+| `get_diagnostics` | Runs the compiler's frontend on a file and returns **E00x/W00x** diagnostic codes. |
 | `find_callers` | Returns a list of functions that call a specific symbol. |
 | `structural_search` | Finds all functions in the project that share the same AST structure as the target function. |
 
