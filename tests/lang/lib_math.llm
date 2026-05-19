@@ -1,0 +1,13 @@
+// Library Module: lib_math
+// Defines shared shapes and functions
+
+X # Point x y
+
+X : add x y
+    + ⚓ x ⚓ y
+
+X : triple x
+    * ⚓ x 3
+
+X : greet name
+    ⧉ "Hello, " ⚓ name

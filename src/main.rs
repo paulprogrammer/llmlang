@@ -158,11 +158,17 @@ fn main() {
         process::exit(1);
     }
 
-    if emit_sig {
+    if emit_sig || output_path.is_some() {
         let sig = codegen.emit_signature_file();
         let sig_path = match output_path {
-            Some(p) => format!("{}.llms", p),
-            None => format!("{}.llms", input_path_str),
+            Some(p) => {
+                if p.ends_with(".o") {
+                    format!("{}.llmi", &p[..p.len()-2])
+                } else {
+                    format!("{}.llmi", p)
+                }
+            },
+            None => format!("{}.llmi", input_path_str),
         };
         fs::write(sig_path, sig).expect("Could not write signature file");
     }

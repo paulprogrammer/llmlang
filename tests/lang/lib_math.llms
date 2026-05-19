@@ -1,0 +1,6 @@
+# Point x y
+: add 2
+: triple 1
+: greet 1
+: llm_strdup 1
+: llm_cat 2

@@ -39,15 +39,17 @@ impl<'ctx> CodeGen<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         
-        // Emit runtime configuration as global constants
+        // Emit runtime configuration as global constants with LinkOnceODR linkage
         let i64_type = context.i64_type();
         let threads_global = module.add_global(i64_type, None, "llm_max_threads");
         threads_global.set_initializer(&i64_type.const_int(config.max_threads as u64, false));
         threads_global.set_constant(true);
+        threads_global.set_linkage(inkwell::module::Linkage::LinkOnceODR);
 
         let queue_global = module.add_global(i64_type, None, "llm_queue_size");
         queue_global.set_initializer(&i64_type.const_int(config.queue_size as u64, false));
         queue_global.set_constant(true);
+        queue_global.set_linkage(inkwell::module::Linkage::LinkOnceODR);
 
         Self { 
             context, 
@@ -99,9 +101,23 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn gen_string_constant(&self, s: &str) -> BasicValueEnum<'ctx> {
         let string_val = self.context.const_string(s.as_bytes(), true);
-        let global = self.module.add_global(string_val.get_type(), None, "str_const");
-        global.set_initializer(&string_val);
-        global.set_constant(true);
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        use std::hash::Hasher;
+        use std::hash::Hash;
+        s.hash(&mut hasher);
+        let hash = hasher.finish();
+        let global_name = format!("str_const_{:x}", hash);
+
+        let global = if let Some(g) = self.module.get_global(&global_name) {
+            g
+        } else {
+            let g = self.module.add_global(string_val.get_type(), None, &global_name);
+            g.set_initializer(&string_val);
+            g.set_constant(true);
+            g.set_linkage(inkwell::module::Linkage::LinkOnceODR);
+            g
+        };
+        
         let ptr = global.as_pointer_value();
         let ptr_int = self.builder.build_ptr_to_int(ptr, self.context.i64_type(), "str_ptr").unwrap();
         

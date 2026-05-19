@@ -41,21 +41,29 @@ impl Parser {
         None
     }
 
-    fn load_signature(&self, module: &str) -> Vec<(String, usize)> {
-        let sig_path = format!("{}.llms", module);
+    fn load_signature(&self, module: &str) -> (Vec<(String, usize)>, Vec<(String, Vec<String>)>) {
+        let sig_path = format!("{}.llmi", module);
         let content = std::fs::read_to_string(&sig_path).unwrap_or_default();
-        let mut sigs = Vec::new();
+        let mut funcs = Vec::new();
+        let mut shapes = Vec::new();
         for line in content.lines() {
             if line.starts_with(':') {
                 let parts: Vec<&str> = line[1..].trim().split_whitespace().collect();
                 if parts.len() >= 2 {
                     if let Ok(arity) = parts[1].parse::<usize>() {
-                        sigs.push((parts[0].to_string(), arity));
+                        funcs.push((parts[0].to_string(), arity));
                     }
+                }
+            } else if line.starts_with('#') {
+                let parts: Vec<&str> = line[1..].trim().split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let name = parts[0].to_string();
+                    let fields = parts[1..].iter().map(|s| s.to_string()).collect();
+                    shapes.push((name, fields));
                 }
             }
         }
-        sigs
+        (funcs, shapes)
     }
 
     fn report_error(&self, code: &str) -> ! {
@@ -232,9 +240,15 @@ impl Parser {
                 self.consume();
                 let module = if let Token::Identifier(s) = self.consume() { s } else { self.report_error("E002") };
                 let symbol = if let Token::Identifier(s) = self.consume() { s } else { self.report_error("E002") };
-                let sigs = self.load_signature(&module);
-                let arity = sigs.iter().find(|(name, _)| name == &symbol).map(|(_, a)| *a).unwrap_or(1);
-                Expr::Import(module, symbol, arity)
+                let (funcs, shapes) = self.load_signature(&module);
+                
+                // If the symbol is a shape, return it as a Shape expr so codegen registers it
+                if let Some((name, fields)) = shapes.iter().find(|(name, _)| name == &symbol) {
+                    Expr::Shape(name.clone(), fields.clone(), false)
+                } else {
+                    let arity = funcs.iter().find(|(name, _)| name == &symbol).map(|(_, a)| *a).unwrap_or(1);
+                    Expr::Import(module, symbol, arity)
+                }
             }
             Token::Apply(arity) => {
                 let arity = *arity;

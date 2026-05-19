@@ -1,0 +1,9 @@
+# Point x y
+: add 2
+: triple 1
+: greet 1
+: llm_alloc 1
+: llm_strdup 1
+: llm_panic 1
+: llm_reg 2
+: llm_drop_soa 2
