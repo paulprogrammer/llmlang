@@ -1,0 +1,14 @@
+# Data val i64
+
+: main
+    L x 10
+    L _ ~ ⚓ x
+    . ? = ⚓ x 10 0 🚨 "Mut"
+    L tz 🕒🌍
+    . ? > ℓ ⚓ tz 0 0 🚨 "TZ"
+    L f1 1.5
+    L f2 2.5
+    . ? < ⚓ f1 ⚓ f2 0 🚨 "Float"
+    L many N Data 1000
+    . ? = ℓ ⚓ many 1000 0 🚨 "SoA"
+    0

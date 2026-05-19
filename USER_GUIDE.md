@@ -136,6 +136,23 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
     0
 ```
 
-## 7. Understanding Diagnostics
+## 7. Testing
+
+`llmlang` includes a self-hosted test suite for behavioral verification.
+
+### Running Tests
+
+```bash
+# Run all tests (Rust + llmlang)
+cargo test && ./llm-test
+```
+
+The `./llm-test` script compiles and runs all test programs in `tests/lang/*.llm`. You can also run specific tests:
+
+```bash
+./llm-test tests/lang/math.llm
+```
+
+## 8. Understanding Diagnostics
 
 If the compiler outputs a code like `E005` or `W001`, refer to [DIAGNOSTICS.md](./DIAGNOSTICS.md) for the human-readable mapping. These codes are optimized to save LLM tokens.

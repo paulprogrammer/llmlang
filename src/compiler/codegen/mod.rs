@@ -85,6 +85,18 @@ impl<'ctx> CodeGen<'ctx> {
         unsafe { BasicValueEnum::new(call.as_value_ref()) }
     }
 
+    fn as_int(&self, val: BasicValueEnum<'ctx>) -> IntValue<'ctx> {
+        if val.is_int_value() {
+            val.into_int_value()
+        } else if val.is_pointer_value() {
+            self.builder.build_ptr_to_int(val.into_pointer_value(), self.context.i64_type(), "ptr_to_int").unwrap()
+        } else if val.is_float_value() {
+            self.builder.build_float_to_signed_int(val.into_float_value(), self.context.i64_type(), "f_to_i").unwrap()
+        } else {
+            panic!("E996: Expected integer-convertible value");
+        }
+    }
+
     fn gen_string_constant(&self, s: &str) -> BasicValueEnum<'ctx> {
         let string_val = self.context.const_string(s.as_bytes(), true);
         let global = self.module.add_global(string_val.get_type(), None, "str_const");
@@ -234,39 +246,72 @@ impl<'ctx> CodeGen<'ctx> {
                 if left.is_pure() && left.complexity() > parallel_threshold {
                     left_handle = Some(self.gen_parallel_expr(left, stack, expand_map));
                 }
-                let (lhs, rhs): (IntValue, IntValue) = if let Some(handle) = left_handle {
-                    let rhs_val = self.gen_expr(right, stack, expand_map).into_int_value();
+                let lhs_val = if let Some(handle) = left_handle {
                     let join_fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
                     let join_fn = self.get_or_add_external_fn("llm_join", join_fn_type);
                     let call = self.builder.build_call(join_fn, &[handle.into()], "join_res").unwrap();
-                    let left_res = self.get_call_res(call).into_int_value();
-                    (left_res, rhs_val)
+                    self.get_call_res(call)
                 } else {
-                    let l = self.gen_expr(left, stack, expand_map).into_int_value();
-                    let r = self.gen_expr(right, stack, expand_map).into_int_value();
-                    (l, r)
+                    self.gen_expr(left, stack, expand_map)
                 };
-                match op {
-                    Token::Add => self.builder.build_int_add(lhs, rhs, "add").unwrap().into(),
-                    Token::Sub => self.builder.build_int_sub(lhs, rhs, "sub").unwrap().into(),
-                    Token::Mul => self.builder.build_int_mul(lhs, rhs, "mul").unwrap().into(),
-                    Token::Div => self.builder.build_int_signed_div(lhs, rhs, "div").unwrap().into(),
-                    Token::Eq => {
-                        let cmp = self.builder.build_int_compare(inkwell::IntPredicate::EQ, lhs, rhs, "eq").unwrap();
-                        self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zext").unwrap().into()
+                let rhs_val = self.gen_expr(right, stack, expand_map);
+
+                if lhs_val.is_float_value() || rhs_val.is_float_value() {
+                    let lhs = if lhs_val.is_int_value() {
+                        self.builder.build_signed_int_to_float(lhs_val.into_int_value(), self.context.f64_type(), "fpromote").unwrap()
+                    } else {
+                        lhs_val.into_float_value()
+                    };
+                    let rhs = if rhs_val.is_int_value() {
+                        self.builder.build_signed_int_to_float(rhs_val.into_int_value(), self.context.f64_type(), "fpromote").unwrap()
+                    } else {
+                        rhs_val.into_float_value()
+                    };
+
+                    match op {
+                        Token::Add => self.builder.build_float_add(lhs, rhs, "fadd").unwrap().into(),
+                        Token::Sub => self.builder.build_float_sub(lhs, rhs, "fsub").unwrap().into(),
+                        Token::Mul => self.builder.build_float_mul(lhs, rhs, "fmul").unwrap().into(),
+                        Token::Div => self.builder.build_float_div(lhs, rhs, "fdiv").unwrap().into(),
+                        Token::Eq => {
+                            let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::OEQ, lhs, rhs, "feq").unwrap();
+                            self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zext").unwrap().into()
+                        }
+                        Token::Lt => {
+                            let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::OLT, lhs, rhs, "flt").unwrap();
+                            self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zext").unwrap().into()
+                        }
+                        Token::Gt => {
+                            let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::OGT, lhs, rhs, "fgt").unwrap();
+                            self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zext").unwrap().into()
+                        }
+                        _ => panic!("E008"),
                     }
-                    Token::Lt => {
-                        let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, lhs, rhs, "lt").unwrap();
-                        self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zext").unwrap().into()
+                } else {
+                    let lhs = self.as_int(lhs_val);
+                    let rhs = self.as_int(rhs_val);
+                    match op {
+                        Token::Add => self.builder.build_int_add(lhs, rhs, "add").unwrap().into(),
+                        Token::Sub => self.builder.build_int_sub(lhs, rhs, "sub").unwrap().into(),
+                        Token::Mul => self.builder.build_int_mul(lhs, rhs, "mul").unwrap().into(),
+                        Token::Div => self.builder.build_int_signed_div(lhs, rhs, "div").unwrap().into(),
+                        Token::Eq => {
+                            let cmp = self.builder.build_int_compare(inkwell::IntPredicate::EQ, lhs, rhs, "eq").unwrap();
+                            self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zext").unwrap().into()
+                        }
+                        Token::Lt => {
+                            let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, lhs, rhs, "lt").unwrap();
+                            self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zext").unwrap().into()
+                        }
+                        Token::Gt => {
+                            let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SGT, lhs, rhs, "gt").unwrap();
+                            self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zext").unwrap().into()
+                        }
+                        Token::BitAnd => self.builder.build_and(lhs, rhs, "and").unwrap().into(),
+                        Token::BitOr => self.builder.build_or(lhs, rhs, "or").unwrap().into(),
+                        Token::BitXor => self.builder.build_xor(lhs, rhs, "xor").unwrap().into(),
+                        _ => panic!("E008"),
                     }
-                    Token::Gt => {
-                        let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SGT, lhs, rhs, "gt").unwrap();
-                        self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zext").unwrap().into()
-                    }
-                    Token::BitAnd => self.builder.build_and(lhs, rhs, "and").unwrap().into(),
-                    Token::BitOr => self.builder.build_or(lhs, rhs, "or").unwrap().into(),
-                    Token::BitXor => self.builder.build_xor(lhs, rhs, "xor").unwrap().into(),
-                    _ => panic!("E008"),
                 }
             }
             Expr::Move(inner) => {
@@ -301,7 +346,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Expr::Borrow(inner) | Expr::MutBorrow(inner) => self.gen_expr(inner, stack, expand_map),
             Expr::New(shape_name, count_expr) => {
-                let count = self.gen_expr(count_expr, stack, expand_map).into_int_value();
+                let count_val = self.gen_expr(count_expr, stack, expand_map);
+                let count = self.as_int(count_val);
                 let shapes = self.shapes.borrow();
                 let fields = shapes.get(shape_name).expect("E006");
                 let mut members: Vec<BasicValueEnum<'ctx>> = Vec::new();
@@ -328,9 +374,11 @@ impl<'ctx> CodeGen<'ctx> {
                 struct_ptr_int.into()
             }
             Expr::Get(instance_expr, field_name, index_expr) => {
-                let struct_ptr_int = self.gen_expr(instance_expr, stack, expand_map).into_int_value();
+                let struct_ptr_val = self.gen_expr(instance_expr, stack, expand_map);
+                let struct_ptr_int = self.as_int(struct_ptr_val);
                 let struct_ptr = self.builder.build_int_to_ptr(struct_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "struct_ptr").unwrap();
-                let index = self.gen_expr(index_expr, stack, expand_map).into_int_value();
+                let index_val = self.gen_expr(index_expr, stack, expand_map);
+                let index = self.as_int(index_val);
                 let shapes = self.shapes.borrow();
                 let mut field_idx = 0;
                 let mut found = false;
@@ -346,15 +394,18 @@ impl<'ctx> CodeGen<'ctx> {
                 if !found { panic!("E007"); }
                 let llvm_field_type = self.get_llvm_type(field_type_name);
                 let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
-                let col_ptr_int = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap().into_int_value();
+                let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
+                let col_ptr_int = self.as_int(col_ptr_int_val);
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                 let ptr_to_element = unsafe { self.builder.build_gep(llvm_field_type, col_ptr, &[index], "gep").unwrap() };
                 self.builder.build_load(llvm_field_type, ptr_to_element, "load").unwrap()
             }
             Expr::Set(instance_expr, field_name, index_expr, value_expr) => {
-                let struct_ptr_int = self.gen_expr(instance_expr, stack, expand_map).into_int_value();
+                let struct_ptr_val = self.gen_expr(instance_expr, stack, expand_map);
+                let struct_ptr_int = self.as_int(struct_ptr_val);
                 let struct_ptr = self.builder.build_int_to_ptr(struct_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "struct_ptr").unwrap();
-                let index = self.gen_expr(index_expr, stack, expand_map).into_int_value();
+                let index_val = self.gen_expr(index_expr, stack, expand_map);
+                let index = self.as_int(index_val);
                 let value = self.gen_expr(value_expr, stack, expand_map);
                 let shapes = self.shapes.borrow();
                 let mut field_idx = 0;
@@ -371,14 +422,16 @@ impl<'ctx> CodeGen<'ctx> {
                 if !found { panic!("E007"); }
                 let llvm_field_type = self.get_llvm_type(field_type_name);
                 let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
-                let col_ptr_int = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap().into_int_value();
+                let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
+                let col_ptr_int = self.as_int(col_ptr_int_val);
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                 let ptr_to_element = unsafe { self.builder.build_gep(llvm_field_type, col_ptr, &[index], "gep").unwrap() };
                 self.builder.build_store(ptr_to_element, value).unwrap();
                 value
             }
             Expr::If(cond_expr, true_expr, false_expr) => {
-                let cond = self.gen_expr(cond_expr, stack, expand_map).into_int_value();
+                let cond_val = self.gen_expr(cond_expr, stack, expand_map);
+                let cond = self.as_int(cond_val);
                 let parent_func = self.builder.get_insert_block().unwrap().get_parent().unwrap();
                 let true_bb = self.context.append_basic_block(parent_func, "then");
                 let false_bb = self.context.append_basic_block(parent_func, "else");
@@ -482,7 +535,8 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Len(e) => {
                 let s_val = self.gen_expr(e, stack, expand_map);
                 if let Some(_shape) = self.infer_shape(e, stack) {
-                    let ptr = self.builder.build_int_to_ptr(s_val.into_int_value(), self.context.ptr_type(inkwell::AddressSpace::default()), "soa_ptr").unwrap();
+                    let s_int = self.as_int(s_val);
+                    let ptr = self.builder.build_int_to_ptr(s_int, self.context.ptr_type(inkwell::AddressSpace::default()), "soa_ptr").unwrap();
                     self.builder.build_load(self.context.i64_type(), ptr, "count").unwrap()
                 } else {
                     let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
@@ -599,11 +653,12 @@ impl<'ctx> CodeGen<'ctx> {
                 let shapes = self.shapes.borrow();
                 let fields = shapes.get(&shape_name).expect("E006");
                 let fields_csv = fields.join(",");
-                let val_ptr = val.into_int_value();
-                let fields_ptr = self.gen_string_constant(&fields_csv).into_int_value();
+                let val_int = self.as_int(val);
+                let fields_val = self.gen_string_constant(&fields_csv);
+                let fields_int = self.as_int(fields_val);
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_pack", fn_type);
-                let call = self.builder.build_call(func, &[val_ptr.into(), fields_ptr.into()], "json").unwrap();
+                let call = self.builder.build_call(func, &[val_int.into(), fields_int.into()], "json").unwrap();
                 self.get_call_res(call)
             }
             Expr::Unpack(e, shape_name) => {
@@ -611,16 +666,19 @@ impl<'ctx> CodeGen<'ctx> {
                 let shapes = self.shapes.borrow();
                 let fields = shapes.get(shape_name).expect("E006");
                 let fields_csv = fields.join(",");
-                let fields_ptr = self.gen_string_constant(&fields_csv).into_int_value();
+                let fields_val = self.gen_string_constant(&fields_csv);
+                let fields_int = self.as_int(fields_val);
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_unpack", fn_type);
-                let call = self.builder.build_call(func, &[json_val.into(), fields_ptr.into()], "inst").unwrap();
+                let call = self.builder.build_call(func, &[json_val.into(), fields_int.into()], "inst").unwrap();
                 self.get_call_res(call)
             }
             Expr::Map(inst_expr, field_name, func_expr) => {
-                let inst_ptr_int = self.gen_expr(inst_expr, stack, expand_map).into_int_value();
+                let inst_ptr_val = self.gen_expr(inst_expr, stack, expand_map);
+                let inst_ptr_int = self.as_int(inst_ptr_val);
                 let inst_ptr = self.builder.build_int_to_ptr(inst_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "inst_ptr").unwrap();
-                let count = self.builder.build_load(self.context.i64_type(), inst_ptr, "count").unwrap().into_int_value();
+                let count_val = self.builder.build_load(self.context.i64_type(), inst_ptr, "count").unwrap();
+                let count = self.as_int(count_val);
                 let shape_name = self.infer_shape(inst_expr, stack).expect("E006");
                 let shapes = self.shapes.borrow();
                 let fields = shapes.get(&shape_name).expect("E006");
@@ -652,7 +710,8 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(i_ptr, self.context.i64_type().const_int(0, false)).unwrap();
                 self.builder.build_unconditional_branch(loop_bb).unwrap();
                 self.builder.position_at_end(loop_bb);
-                let i = self.builder.build_load(self.context.i64_type(), i_ptr, "i_val").unwrap().into_int_value();
+                let i_val = self.builder.build_load(self.context.i64_type(), i_ptr, "i_val").unwrap();
+                let i = self.as_int(i_val);
                 let cond = self.builder.build_int_compare(inkwell::IntPredicate::SLT, i, count, "loopcond").unwrap();
                 let loop_body_bb = self.context.append_basic_block(parent_func, "map_body");
                 self.builder.build_conditional_branch(cond, loop_body_bb, after_bb).unwrap();
@@ -660,7 +719,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let mut field_idx = 0;
                 for (idx, f) in fields.iter().enumerate() { if f == field_name { field_idx = idx + 1; break; } }
                 let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
-                let col_ptr_int = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap().into_int_value();
+                let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
+                let col_ptr_int = self.as_int(col_ptr_int_val);
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                 let old_val = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), col_ptr, &[i], "gep").unwrap() }, "old_val").unwrap();
                 let res_val = if let Expr::Identifier(ref name) = **func_expr {
@@ -670,18 +730,21 @@ impl<'ctx> CodeGen<'ctx> {
                     old_val
                 };
                 let new_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(field_idx as u64, false)], "new_col_ptr_ptr").unwrap() };
-                let new_col_ptr_int = self.builder.build_load(self.context.i64_type(), new_col_ptr_ptr, "new_col_ptr_int").unwrap().into_int_value();
+                let new_col_ptr_int_val = self.builder.build_load(self.context.i64_type(), new_col_ptr_ptr, "new_col_ptr_int").unwrap();
+                let new_col_ptr_int = self.as_int(new_col_ptr_int_val);
                 let new_col_ptr = self.builder.build_int_to_ptr(new_col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "new_col_ptr").unwrap();
                 self.builder.build_store(unsafe { self.builder.build_gep(self.context.i64_type(), new_col_ptr, &[i], "gep").unwrap() }, res_val).unwrap();
                 for (idx, _) in fields.iter().enumerate() {
                     let current_idx = idx + 1;
                     if current_idx != field_idx {
                         let src_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int(current_idx as u64, false)], "src_col").unwrap() };
-                        let src_col_int = self.builder.build_load(self.context.i64_type(), src_col_ptr_ptr, "src_val").unwrap().into_int_value();
+                        let src_col_int_val = self.builder.build_load(self.context.i64_type(), src_col_ptr_ptr, "src_val").unwrap();
+                        let src_col_int = self.as_int(src_col_int_val);
                         let src_col = self.builder.build_int_to_ptr(src_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "src_ptr").unwrap();
                         let val = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), src_col, &[i], "gep").unwrap() }, "v").unwrap();
                         let dst_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(current_idx as u64, false)], "dst_col").unwrap() };
-                        let dst_col_int = self.builder.build_load(self.context.i64_type(), dst_col_ptr_ptr, "dst_val").unwrap().into_int_value();
+                        let dst_col_int_val = self.builder.build_load(self.context.i64_type(), dst_col_ptr_ptr, "dst_val").unwrap();
+                        let dst_col_int = self.as_int(dst_col_int_val);
                         let dst_col = self.builder.build_int_to_ptr(dst_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "dst_ptr").unwrap();
                         self.builder.build_store(unsafe { self.builder.build_gep(self.context.i64_type(), dst_col, &[i], "gep").unwrap() }, val).unwrap();
                     }
@@ -692,9 +755,11 @@ impl<'ctx> CodeGen<'ctx> {
                 new_inst_ptr_int.into()
             }
             Expr::Filter(inst_expr, func_expr) => {
-                let inst_ptr_int = self.gen_expr(inst_expr, stack, expand_map).into_int_value();
+                let inst_ptr_val = self.gen_expr(inst_expr, stack, expand_map);
+                let inst_ptr_int = self.as_int(inst_ptr_val);
                 let inst_ptr = self.builder.build_int_to_ptr(inst_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "inst_ptr").unwrap();
-                let count = self.builder.build_load(self.context.i64_type(), inst_ptr, "count").unwrap().into_int_value();
+                let count_val = self.builder.build_load(self.context.i64_type(), inst_ptr, "count").unwrap();
+                let count = self.as_int(count_val);
                 let shape_name = self.infer_shape(inst_expr, stack).expect("E006");
                 let shapes = self.shapes.borrow();
                 let fields = shapes.get(&shape_name).expect("E006");
@@ -707,7 +772,8 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(i_ptr, self.context.i64_type().const_int(0, false)).unwrap();
                 self.builder.build_unconditional_branch(count_loop_bb).unwrap();
                 self.builder.position_at_end(count_loop_bb);
-                let i = self.builder.build_load(self.context.i64_type(), i_ptr, "i_val").unwrap().into_int_value();
+                let i_val = self.builder.build_load(self.context.i64_type(), i_ptr, "i_val").unwrap();
+                let i = self.as_int(i_val);
                 let cond = self.builder.build_int_compare(inkwell::IntPredicate::SLT, i, count, "loopcond").unwrap();
                 let count_body_bb = self.context.append_basic_block(parent_func, "filter_count_body");
                 self.builder.build_conditional_branch(cond, count_body_bb, count_after_bb).unwrap();
@@ -715,7 +781,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let mut row_vals: Vec<BasicValueEnum<'ctx>> = Vec::new();
                 for (idx, field_type_name) in fields.iter().enumerate() {
                     let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int((idx + 1) as u64, false)], "col_ptr_ptr").unwrap() };
-                    let col_ptr_int = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap().into_int_value();
+                    let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
+                    let col_ptr_int = self.as_int(col_ptr_int_val);
                     let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                     let llvm_type = self.get_llvm_type(field_type_name);
                     let val = self.builder.build_load(llvm_type, unsafe { self.builder.build_gep(llvm_type, col_ptr, &[i], "gep").unwrap() }, "v").unwrap();
@@ -725,18 +792,21 @@ impl<'ctx> CodeGen<'ctx> {
                     let func_val = self.module.get_function(name).expect("E010");
                     let mut meta_vals = Vec::new();
                     for v in &row_vals { meta_vals.push((*v).into()); }
-                    let res = self.get_call_res(self.builder.build_call(func_val, &meta_vals, "pred").unwrap()).into_int_value();
+                    let res_val = self.get_call_res(self.builder.build_call(func_val, &meta_vals, "pred").unwrap());
+                    let res = self.as_int(res_val);
                     self.builder.build_int_compare(inkwell::IntPredicate::NE, res, self.context.i64_type().const_int(0, false), "is_matched").unwrap()
                 } else {
                     self.context.bool_type().const_int(1, false)
                 };
-                let cur_matching = self.builder.build_load(self.context.i64_type(), matching_count_ptr, "c").unwrap().into_int_value();
+                let cur_matching_val = self.builder.build_load(self.context.i64_type(), matching_count_ptr, "c").unwrap();
+                let cur_matching = self.as_int(cur_matching_val);
                 let inc = self.builder.build_int_z_extend(matched, self.context.i64_type(), "inc").unwrap();
                 self.builder.build_store(matching_count_ptr, self.builder.build_int_add(cur_matching, inc, "new_c").unwrap()).unwrap();
                 self.builder.build_store(i_ptr, self.builder.build_int_add(i, self.context.i64_type().const_int(1, false), "next_i").unwrap()).unwrap();
                 self.builder.build_unconditional_branch(count_loop_bb).unwrap();
                 self.builder.position_at_end(count_after_bb);
-                let final_matching_count = self.builder.build_load(self.context.i64_type(), matching_count_ptr, "final_c").unwrap().into_int_value();
+                let final_matching_count_val = self.builder.build_load(self.context.i64_type(), matching_count_ptr, "final_c").unwrap();
+                let final_matching_count = self.as_int(final_matching_count_val);
                 let mut members: Vec<BasicValueEnum<'ctx>> = Vec::new();
                 members.push(final_matching_count.into());
                 for _field_type_name in fields {
@@ -765,37 +835,42 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(i_ptr, self.context.i64_type().const_int(0, false)).unwrap();
                 self.builder.build_unconditional_branch(copy_loop_bb).unwrap();
                 self.builder.position_at_end(copy_loop_bb);
-                let i = self.builder.build_load(self.context.i64_type(), i_ptr, "i_val").unwrap().into_int_value();
-                let cond = self.builder.build_int_compare(inkwell::IntPredicate::SLT, i, count, "loopcond").unwrap();
+                let i_val2 = self.builder.build_load(self.context.i64_type(), i_ptr, "i_val").unwrap();
+                let i2 = self.as_int(i_val2);
+                let cond2 = self.builder.build_int_compare(inkwell::IntPredicate::SLT, i2, count, "loopcond").unwrap();
                 let copy_body_bb = self.context.append_basic_block(parent_func, "filter_copy_body");
-                self.builder.build_conditional_branch(cond, copy_body_bb, copy_after_bb).unwrap();
+                self.builder.build_conditional_branch(cond2, copy_body_bb, copy_after_bb).unwrap();
                 self.builder.position_at_end(copy_body_bb);
                 let mut row_vals2: Vec<BasicValueEnum<'ctx>> = Vec::new();
                 for (idx, field_type_name) in fields.iter().enumerate() {
                     let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int((idx + 1) as u64, false)], "col_ptr_ptr").unwrap() };
-                    let col_ptr_int = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap().into_int_value();
+                    let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
+                    let col_ptr_int = self.as_int(col_ptr_int_val);
                     let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                     let llvm_type = self.get_llvm_type(field_type_name);
-                    let val = self.builder.build_load(llvm_type, unsafe { self.builder.build_gep(llvm_type, col_ptr, &[i], "gep").unwrap() }, "v").unwrap();
+                    let val = self.builder.build_load(llvm_type, unsafe { self.builder.build_gep(llvm_type, col_ptr, &[i2], "gep").unwrap() }, "v").unwrap();
                     row_vals2.push(val);
                 }
-                let matched = if let Expr::Identifier(ref name) = **func_expr {
+                let matched2 = if let Expr::Identifier(ref name) = **func_expr {
                     let func_val = self.module.get_function(name).expect("E010");
                     let mut meta_vals = Vec::new();
                     for v in &row_vals2 { meta_vals.push((*v).into()); }
-                    let res = self.get_call_res(self.builder.build_call(func_val, &meta_vals, "pred").unwrap()).into_int_value();
+                    let res_val = self.get_call_res(self.builder.build_call(func_val, &meta_vals, "pred").unwrap());
+                    let res = self.as_int(res_val);
                     self.builder.build_int_compare(inkwell::IntPredicate::NE, res, self.context.i64_type().const_int(0, false), "is_matched").unwrap()
                 } else {
                     self.context.bool_type().const_int(1, false)
                 };
                 let then_copy_bb = self.context.append_basic_block(parent_func, "then_copy");
                 let end_copy_bb = self.context.append_basic_block(parent_func, "end_copy");
-                self.builder.build_conditional_branch(matched, then_copy_bb, end_copy_bb).unwrap();
+                self.builder.build_conditional_branch(matched2, then_copy_bb, end_copy_bb).unwrap();
                 self.builder.position_at_end(then_copy_bb);
-                let dst_idx = self.builder.build_load(self.context.i64_type(), next_dst_idx_ptr, "d").unwrap().into_int_value();
+                let dst_idx_val = self.builder.build_load(self.context.i64_type(), next_dst_idx_ptr, "d").unwrap();
+                let dst_idx = self.as_int(dst_idx_val);
                 for (idx, _) in fields.iter().enumerate() {
                     let dst_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int((idx + 1) as u64, false)], "dst_col").unwrap() };
-                    let dst_col_int = self.builder.build_load(self.context.i64_type(), dst_col_ptr_ptr, "dst_val").unwrap().into_int_value();
+                    let dst_col_int_val = self.builder.build_load(self.context.i64_type(), dst_col_ptr_ptr, "dst_val").unwrap();
+                    let dst_col_int = self.as_int(dst_col_int_val);
                     let dst_col = self.builder.build_int_to_ptr(dst_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "dst_ptr").unwrap();
                     let llvm_type = self.get_llvm_type(&fields[idx]);
                     self.builder.build_store(unsafe { self.builder.build_gep(llvm_type, dst_col, &[dst_idx], "gep").unwrap() }, row_vals2[idx]).unwrap();
@@ -803,14 +878,16 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(next_dst_idx_ptr, self.builder.build_int_add(dst_idx, self.context.i64_type().const_int(1, false), "next_d").unwrap()).unwrap();
                 self.builder.build_unconditional_branch(end_copy_bb).unwrap();
                 self.builder.position_at_end(end_copy_bb);
-                self.builder.build_store(i_ptr, self.builder.build_int_add(i, self.context.i64_type().const_int(1, false), "next_i").unwrap()).unwrap();
+                self.builder.build_store(i_ptr, self.builder.build_int_add(i2, self.context.i64_type().const_int(1, false), "next_i").unwrap()).unwrap();
                 self.builder.build_unconditional_branch(copy_loop_bb).unwrap();
                 self.builder.position_at_end(copy_after_bb);
                 new_inst_ptr_int.into()
             }
             Expr::MoneyOp(op, left, right) => {
-                let lhs = self.gen_expr(left, stack, expand_map).into_int_value();
-                let rhs = self.gen_expr(right, stack, expand_map).into_int_value();
+                let lhs_val = self.gen_expr(left, stack, expand_map);
+                let rhs_val = self.gen_expr(right, stack, expand_map);
+                let lhs = self.as_int(lhs_val);
+                let rhs = self.as_int(rhs_val);
                 let scale = self.context.i64_type().const_int(10000, false);
                 match op {
                     Token::Add => self.builder.build_int_add(lhs, rhs, "money_add").unwrap().into(),
@@ -834,8 +911,10 @@ impl<'ctx> CodeGen<'ctx> {
                 self.get_call_res(call)
             }
             Expr::TimeOp(op, left, right) => {
-                let lhs = self.gen_expr(left, stack, expand_map).into_int_value();
-                let rhs = self.gen_expr(right, stack, expand_map).into_int_value();
+                let lhs_val = self.gen_expr(left, stack, expand_map);
+                let rhs_val = self.gen_expr(right, stack, expand_map);
+                let lhs = self.as_int(lhs_val);
+                let rhs = self.as_int(rhs_val);
                 match op {
                     Token::Add => self.builder.build_int_add(lhs, rhs, "time_add").unwrap().into(),
                     Token::Sub => self.builder.build_int_sub(lhs, rhs, "time_sub").unwrap().into(),

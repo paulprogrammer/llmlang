@@ -33,7 +33,8 @@
 * **Sequence Operator (`.`):** Implements `. expr1 expr2`, allowing multiple statements to be executed in order within a single-expression body.* **String Operations:** Native string support using UTF-8 symbols for length (`ℓ`), concatenation (`⧉`), substring (`✂`), location (`🔍`), regex match (`≈`), and split (`🪓`).
 * **System I/O:** Explicit handle-based primitives for reading (`📥`) and writing (`📤`).
 * **Business Primitives:** High-level support for JSON (`📦`), iterative processing (`⟴`, `▽`), and precision math (`💰`) for financial applications.
-* **Error Handling:** Explicit panic mechanism (`🚨`) for non-recoverable states.
+* **Error Handling & Fault Tolerance:** Explicit panic mechanism (`🚨`) for non-recoverable states and a scoped trap operator (`🛡️`) for catching panics in long-running processes.
+* **Compiler Configuration:** Tunable thresholds for auto-parallelism and thread pool management via CLI flags and JSON configuration.
 * **Environment Access:** System-level configuration access via the `🌍` operator.
 * **Temporal Logic:** High-precision TAI64 labels and calendar primitives (`🕒`, `📅`, `📆`) based on the `libtai` baseline, including local timezone resolution (`🕒🌍`).
 
@@ -41,7 +42,8 @@
 * **Implementation Language:** Rust.
 * **Compiler Backend:** LLVM via the `inkwell` crate.
 * **Runtime Support:** A modular C runtime (`src/runtime/`) provides:
-  * A task-based **Thread Pool** for automatic parallelism.
+  * A task-based **Thread Pool** with work-stealing joins for automatic parallelism.
+  * Fault-tolerant execution using a thread-local jump-buffer stack.
   * Heap-allocated string and JSON operations.
   * POSIX regex support.
   * TAI64 temporal math and leap-second-agnostic calendar logic.
