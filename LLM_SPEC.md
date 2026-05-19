@@ -30,6 +30,9 @@
   * `📤` : Write. `📤 handle string`
   * `🧵` : Stringify. `🧵 int`
   * `🪓` : Split. `🪓 str delim idx`
+  * `🕒` : Time Now. Returns TAI64 label (`i64`).
+  * `📅` : Time Get. `📅 T index` (0=Y, 1=M, 2=D, 3=H, 4=m, 5=S).
+  * `📆` : Time Set. `📆 Y M D H m S` -> TAI64 label.
   * `"` : String Literal. `"text"`
 
 ## 2. Memory & Ownership (AFFINE_TYPING)
@@ -38,17 +41,15 @@
 3. **Borrow (`⚓`):** Concurrent read. Does not consume.
 
 ## 3. Automatic Parallelism
-* **Heuristic:** The compiler identifies **Pure** (no `S`, `📥`, `📤`) and **Complex** sub-expressions.
+* **Heuristic:** The compiler identifies **Pure** (no `S`, `📥`, `📤`, `🕒`) and **Complex** sub-expressions.
 * **Execution:** Heavy sub-trees are automatically forked to a background thread pool and synchronized via a fork-join model.
-* **Benefit:** Implicit multi-core utilization without threading boilerplate.
 
 ## 4. Execution & Entry Point
 * **Binary Target:** Requires a `: main` function.
-* **Runtime:** Linked with `rt.c` (Managed Thread Pool & String Lib).
+* **Runtime:** Linked with `rt.c` (Thread Pool, String Lib, libtai-Temporal).
 
 ## 5. Diagnostic Codes
 * **E003:** OOB Index.
 * **E005:** Double Move.
 * **E009:** Branch stack state mismatch.
-* **W001:** Unused binding (Legacy warning, now auto-dropped).
 Ref: DIAGNOSTICS.md

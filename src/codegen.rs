@@ -466,6 +466,33 @@ impl<'ctx> CodeGen<'ctx> {
                 let call = self.builder.build_call(func, &[s_val.into(), d_val.into(), i_val.into()], "split").unwrap();
                 call.try_as_basic_value().basic().expect("E011")
             }
+            Expr::TimeNow => {
+                let fn_type = self.context.i64_type().fn_type(&[], false);
+                let func = self.get_or_add_external_fn("llm_tai_now", fn_type);
+                let call = self.builder.build_call(func, &[], "now").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::TimeGet(t, i) => {
+                let t_val = self.gen_expr(t, stack, expand_map);
+                let i_val = self.gen_expr(i, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_tai_get", fn_type);
+                let call = self.builder.build_call(func, &[t_val.into(), i_val.into()], "get").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::TimeSet(y, m, d, h, mn, s) => {
+                let y_val = self.gen_expr(y, stack, expand_map);
+                let m_val = self.gen_expr(m, stack, expand_map);
+                let d_val = self.gen_expr(d, stack, expand_map);
+                let h_val = self.gen_expr(h, stack, expand_map);
+                let mn_val = self.gen_expr(mn, stack, expand_map);
+                let s_val = self.gen_expr(s, stack, expand_map);
+                let i64_type = self.context.i64_type();
+                let fn_type = i64_type.fn_type(&[i64_type.into(); 6], false);
+                let func = self.get_or_add_external_fn("llm_tai_set", fn_type);
+                let call = self.builder.build_call(func, &[y_val.into(), m_val.into(), d_val.into(), h_val.into(), mn_val.into(), s_val.into()], "set").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
             _ => panic!("E001"),
         }
     }

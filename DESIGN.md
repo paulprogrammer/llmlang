@@ -19,6 +19,7 @@
 * **Rust-style Borrowing:** 
   * Explicit markers for read-only borrowing (`⚓`) and mutable borrowing (`~`).
   * No hidden global state; all state transitions are explicit in the AST.
+* **Strings as Objects:** String literals and dynamic string results are treated as movable objects. Concatenation and other operations allocate from the heap via a small runtime (`rt.c`).
 
 ## 4. Module & Scope Structure
 * **Signature Files (`.llms`):** The compiler generates high-density "header" files containing only signatures (no bodies). Consuming LLMs only need to read these files, saving thousands of tokens.
@@ -31,6 +32,7 @@
 * **UTF-8 Symbols for Core Logic:** Base operators use single-character tokens (e.g., `+`, `⮞`, `⚓`, `@`, `?`). 
 * **String Operations:** Native string support using UTF-8 symbols for length (`ℓ`), concatenation (`⧉`), substring (`✂`), location (`🔍`), regex match (`≈`), and split (`🪓`).
 * **System I/O:** Explicit handle-based primitives for reading (`📥`) and writing (`📤`).
+* **Temporal Logic:** High-precision TAI64 labels and calendar primitives (`🕒`, `📅`, `📆`) based on the `libtai` baseline.
 
 ## 7. Implementation Details
 * **Implementation Language:** Rust.
@@ -39,4 +41,5 @@
   * A task-based **Thread Pool** for automatic parallelism.
   * Heap-allocated string operations.
   * POSIX regex support.
+  * TAI64 temporal math and leap-second-agnostic calendar logic.
 * **Computational Power:** Turing Complete.

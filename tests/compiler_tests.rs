@@ -384,5 +384,24 @@ fn test_positive_auto_parallelism() {
     assert!(ir.contains("call i64 @llm_join"));
 }
 
+#[test]
+fn test_positive_temporal() {
+    let context = Context::create();
+    // 🕒 -> T
+    // 📅 T 0 -> Year
+    // 📆 Y M D H m S -> T
+    let input = ": main L t 🕒 L y 📅 ⚓ ^0 0 📆 ⮞ ^0 1 1 0 0 0";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("call i64 @llm_tai_now"));
+    assert!(ir.contains("call i64 @llm_tai_get"));
+    assert!(ir.contains("call i64 @llm_tai_set"));
+}
+
+
 
 

@@ -35,6 +35,9 @@ pub enum Token {
     Write,     // 📤
     Str,       // 🧵
     Split,     // 🪓
+    TimeNow,   // 🕒
+    TimeGet,   // 📅
+    TimeSet,   // 📆
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -100,6 +103,9 @@ impl Lexer {
             '📤' => Token::Write,
             '🧵' => Token::Str,
             '🪓' => Token::Split,
+            '🕒' => Token::TimeNow,
+            '📅' => Token::TimeGet,
+            '📆' => Token::TimeSet,
             '"' => self.lex_string(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
