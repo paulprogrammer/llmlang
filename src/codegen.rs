@@ -79,6 +79,60 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_call(func, &[val.into()], "").unwrap();
     }
 
+    fn gen_parallel_expr(&self, expr: &Expr, stack: &mut Vec<StackItem<'ctx>>, expand_map: &HashMap<String, usize>) -> BasicValueEnum<'ctx> {
+        // 1. Identify captures
+        let mut captures = Vec::new();
+        // For simplicity, we capture the entire stack context.
+        // In a real optimized compiler, we'd only capture used variables.
+        for (i, item) in stack.iter().enumerate() {
+            if item.state == VariableState::Available || item.state == VariableState::Borrowed {
+                captures.push((i, item.value));
+            }
+        }
+
+        // 2. Create the task function
+        let i64_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
+        let task_fn_type = self.context.i64_type().fn_type(&[i64_ptr.into()], false);
+        let task_fn = self.module.add_function("parallel_task", task_fn_type, None);
+        let entry = self.context.append_basic_block(task_fn, "entry");
+        
+        // Save current builder state
+        let current_bb = self.builder.get_insert_block().unwrap();
+        self.builder.position_at_end(entry);
+
+        // 3. Load captures from the environment struct
+        let env_ptr = task_fn.get_nth_param(0).unwrap().into_pointer_value();
+        let mut task_stack = Vec::new();
+        for (i, (_orig_idx, _val)) in captures.iter().enumerate() {
+            let member_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), env_ptr, &[self.context.i64_type().const_int(i as u64, false)], "cap").unwrap() };
+            let loaded = self.builder.build_load(self.context.i64_type(), member_ptr, "val").unwrap();
+            task_stack.push(StackItem { value: loaded, state: VariableState::Available });
+        }
+
+        // 4. Generate the expression code in the task function
+        let res = self.gen_expr(expr, &mut task_stack, expand_map);
+        self.builder.build_return(Some(&res)).unwrap();
+
+        // Restore builder state
+        self.builder.position_at_end(current_bb);
+
+        // 5. In the caller, package the environment and fork
+        let env_alloc = self.builder.build_array_alloca(self.context.i64_type(), self.context.i64_type().const_int(captures.len() as u64, false), "env").unwrap();
+        for (i, (_orig_idx, val)) in captures.iter().enumerate() {
+            let member_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), env_alloc, &[self.context.i64_type().const_int(i as u64, false)], "cap_store").unwrap() };
+            self.builder.build_store(member_ptr, *val).unwrap();
+        }
+
+        let fork_fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
+        let fork_fn = self.get_or_add_external_fn("llm_fork", fork_fn_type);
+        
+        let fn_int = self.builder.build_ptr_to_int(task_fn.as_global_value().as_pointer_value(), self.context.i64_type(), "fn_ptr").unwrap();
+        let env_int = self.builder.build_ptr_to_int(env_alloc, self.context.i64_type(), "env_ptr").unwrap();
+        
+        let handle = self.builder.build_call(fork_fn, &[fn_int.into(), env_int.into()], "handle").unwrap().try_as_basic_value().basic().expect("E011");
+        handle
+    }
+
     pub fn gen_expr(&self, expr: &Expr, stack: &mut Vec<StackItem<'ctx>>, expand_map: &HashMap<String, usize>) -> BasicValueEnum<'ctx> {
         match expr {
             Expr::Integer(i) => self.context.i64_type().const_int(*i as u64, false).into(),
@@ -103,8 +157,29 @@ impl<'ctx> CodeGen<'ctx> {
                 item.value
             }
             Expr::BinaryOp(op, left, right) => {
-                let lhs = self.gen_expr(left, stack, expand_map).into_int_value();
-                let rhs = self.gen_expr(right, stack, expand_map).into_int_value();
+                let parallel_threshold = 10;
+                let mut left_handle = None;
+                
+                if left.is_pure() && left.complexity() > parallel_threshold {
+                    left_handle = Some(self.gen_parallel_expr(left, stack, expand_map));
+                }
+
+                let (lhs, rhs) = if let Some(handle) = left_handle {
+                    // Left is running in another thread, evaluate right now
+                    let rhs_val = self.gen_expr(right, stack, expand_map).into_int_value();
+                    
+                    // Join left
+                    let join_fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
+                    let join_fn = self.get_or_add_external_fn("llm_join", join_fn_type);
+                    let left_res = self.builder.build_call(join_fn, &[handle.into()], "join_res").unwrap().try_as_basic_value().basic().expect("E011").into_int_value();
+                    
+                    (left_res, rhs_val)
+                } else {
+                    let l = self.gen_expr(left, stack, expand_map).into_int_value();
+                    let r = self.gen_expr(right, stack, expand_map).into_int_value();
+                    (l, r)
+                };
+
                 match op {
                     Token::Add => self.builder.build_int_add(lhs, rhs, "addtmp").unwrap().into(),
                     Token::Sub => self.builder.build_int_sub(lhs, rhs, "subtmp").unwrap().into(),
@@ -251,12 +326,32 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Apply(func_expr, args) => {
                 if let Expr::Identifier(ref name) = **func_expr {
                     let template_opt = self.templates.borrow().get(name).cloned();
-                    if let Some((params, body)) = template_opt {
-                        let mut args_vals = Vec::new();
-                        for arg in args {
+                    
+                    let mut args_vals = Vec::new();
+                    let mut handles = Vec::new();
+                    let parallel_threshold = 15;
+
+                    for (i, arg) in args.iter().enumerate() {
+                        if i < args.len() - 1 && arg.is_pure() && arg.complexity() > parallel_threshold {
+                            handles.push((i, self.gen_parallel_expr(arg, stack, expand_map)));
+                            // Placeholder
+                            args_vals.push(self.context.i64_type().const_int(0, false).into());
+                        } else {
                             args_vals.push(self.gen_expr(arg, stack, expand_map));
                         }
-                        
+                    }
+
+                    // Join handles and update args_vals
+                    if !handles.is_empty() {
+                        let join_fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
+                        let join_fn = self.get_or_add_external_fn("llm_join", join_fn_type);
+                        for (idx, handle) in handles {
+                            let res = self.builder.build_call(join_fn, &[handle.into()], "arg_join").unwrap().try_as_basic_value().basic().expect("E011");
+                            args_vals[idx] = res;
+                        }
+                    }
+
+                    if let Some((params, body)) = template_opt {
                         let initial_stack_len = stack.len();
                         let mut new_expand_map = HashMap::new();
                         for (param, val) in params.iter().zip(args_vals.into_iter()) {
@@ -271,11 +366,11 @@ impl<'ctx> CodeGen<'ctx> {
                         res
                     } else {
                         let function = self.module.get_function(name).expect("E010");
-                        let mut args_vals = Vec::new();
-                        for arg in args {
-                            args_vals.push(self.gen_expr(arg, stack, expand_map).into());
+                        let mut call_args = Vec::new();
+                        for val in args_vals {
+                            call_args.push(val.into());
                         }
-                        let call = self.builder.build_call(function, &args_vals, "calltmp").unwrap();
+                        let call = self.builder.build_call(function, &call_args, "calltmp").unwrap();
                         call.try_as_basic_value().basic().expect("E011")
                     }
                 } else {

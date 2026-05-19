@@ -39,6 +39,45 @@ pub enum Expr {
 }
 
 impl Expr {
+    pub fn is_pure(&self) -> bool {
+        match self {
+            Expr::Integer(_) | Expr::Float(_) | Expr::String(_) | Expr::DeBruijn(_) | Expr::Identifier(_) | Expr::Expand(_) => true,
+            Expr::BinaryOp(_, l, r) => l.is_pure() && r.is_pure(),
+            Expr::Apply(_, args) => args.iter().all(|a| a.is_pure()), // Conservatively assume func body is pure if args are
+            Expr::Move(e) | Expr::Borrow(e) | Expr::MutBorrow(e) | Expr::Len(e) | Expr::Str(e) => e.is_pure(),
+            Expr::Cat(l, r) | Expr::Loc(l, r) | Expr::Reg(l, r) => l.is_pure() && r.is_pure(),
+            Expr::Sub(s, b, l) | Expr::Split(s, b, l) => s.is_pure() && b.is_pure() && l.is_pure(),
+            Expr::If(c, t, f) => c.is_pure() && t.is_pure() && f.is_pure(),
+            Expr::Let(_, v, b) => v.is_pure() && b.is_pure(),
+            Expr::New(_, c) => c.is_pure(),
+            Expr::Get(i, _, idx) => i.is_pure() && idx.is_pure(),
+            Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) => false,
+            Expr::Define(_, _, body, _) => body.is_pure(),
+            Expr::Import(_, _) => false,
+            Expr::Shape(_, _, _) => true,
+        }
+    }
+
+    pub fn complexity(&self) -> usize {
+        match self {
+            Expr::Integer(_) | Expr::Float(_) | Expr::String(_) | Expr::DeBruijn(_) | Expr::Identifier(_) | Expr::Expand(_) => 1,
+            Expr::BinaryOp(_, l, r) => 1 + l.complexity() + r.complexity(),
+            Expr::Apply(_, args) => 10 + args.iter().map(|a| a.complexity()).sum::<usize>(),
+            Expr::Move(e) | Expr::Borrow(e) | Expr::MutBorrow(e) | Expr::Len(e) | Expr::Str(e) => 1 + e.complexity(),
+            Expr::Cat(l, r) | Expr::Loc(l, r) | Expr::Reg(l, r) => 5 + l.complexity() + r.complexity(),
+            Expr::Sub(s, b, l) | Expr::Split(s, b, l) => 5 + s.complexity() + b.complexity() + l.complexity(),
+            Expr::If(c, t, f) => 1 + c.complexity() + t.complexity() + f.complexity(),
+            Expr::Let(_, v, b) => 1 + v.complexity() + b.complexity(),
+            Expr::New(_, c) => 10 + c.complexity(),
+            Expr::Get(i, _, idx) => 2 + i.complexity() + idx.complexity(),
+            Expr::Set(i, _, idx, v) => 2 + i.complexity() + idx.complexity() + v.complexity(),
+            Expr::Define(_, _, body, _) => body.complexity(),
+            Expr::Read(h) => 1 + h.complexity(),
+            Expr::Write(h, s) => 1 + h.complexity() + s.complexity(),
+            Expr::Import(_, _) | Expr::Shape(_, _, _) => 1,
+        }
+    }
+
     pub fn get_calls(&self) -> Vec<String> {
         let mut calls = Vec::new();
         self.collect_calls(&mut calls);

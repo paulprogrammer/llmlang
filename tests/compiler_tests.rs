@@ -366,4 +366,23 @@ fn test_positive_split_op() {
     assert!(ir.contains("call i64 @llm_split"));
 }
 
+#[test]
+fn test_positive_auto_parallelism() {
+    let context = Context::create();
+    // A heavy pure expression: (+ (* 2 2) (* 2 2) ... )
+    // Complexity needs to be > 10
+    let input = ": main + + + + + + + + + + 1 1 1 1 1 1 1 1 1 1 1";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    // Verify that the compiler lifted the sub-expression to a parallel task
+    assert!(ir.contains("define i64 @parallel_task"));
+    assert!(ir.contains("call i64 @llm_fork"));
+    assert!(ir.contains("call i64 @llm_join"));
+}
+
+
 

@@ -5,10 +5,10 @@
 * **Form:** Prefix-arity AST.
 * **Tokens:** Single-char ASCII and UTF-8 symbols.
 * **Operators:** 
-  * `+`, `-`, `*`, `/` : Binary arithmetic.
+  * `+`, `-`, `*`, `/` : Binary arithmetic (Auto-parallel if heavy).
   * `=`, `<`, `>` : Comparison (Returns 0 or 1).
   * `&`, `|`, `^` : Bitwise AND, OR, XOR.
-  * `@` : Application. `@<n> func arg1...` (Optional `<n>` for explicit arity).
+  * `@` : Application. `@<n> func arg1...` (Auto-parallel arguments).
   * `?` : Branching. `? cond true_expr false_expr`
   * `:` : Define. `: name arg1... body`
   * `X` : Export. `X ...`
@@ -24,46 +24,31 @@
   * `ℓ` : Length (String). `ℓ str`
   * `⧉` : Concat (String). `⧉ left right`
   * `✂` : Substring. `✂ str start len`
-  * `🔍` : Location. `🔍 str pattern` (Returns index or -1)
-  * `≈` : Regex Match. `≈ str regex` (Returns 0 or 1)
-  * `"` : String Literal. `"text"`
-  * `📥` : Read. `📥 handle` (0=stdin)
-  * `📤` : Write. `📤 handle string` (1=stdout, 2=stderr)
+  * `🔍` : Location. `🔍 str pattern`
+  * `≈` : Regex Match. `≈ str regex`
+  * `📥` : Read. `📥 handle`
+  * `📤` : Write. `📤 handle string`
   * `🧵` : Stringify. `🧵 int`
   * `🪓` : Split. `🪓 str delim idx`
+  * `"` : String Literal. `"text"`
 
 ## 2. Memory & Ownership (AFFINE_TYPING)
-1. **Rule:** Bindings can be consumed at most ONCE. If unconsumed when their scope ends, they are auto-dropped.
-2. **Move (`⮞`):** Transfers ownership. Target becomes `E004` (unavailable).
+1. **Rule:** Bindings can be consumed at most ONCE. Unconsumed bindings are auto-dropped at end of scope.
+2. **Move (`⮞`):** Transfers ownership. Target becomes unavailable (`E004`).
 3. **Borrow (`⚓`):** Concurrent read. Does not consume.
-4. **Strings:** Managed as moved objects (pointers). Concatenation and substring operations allocate new memory which is auto-freed if not returned.
 
-## 3. Data Layout (SOA_ENFORCED)
-* **Keyword:** `N`, `G`, `S`.
-* **Allocation:** `N ShapeName count_expr`. Returns pointer-struct.
-* **Access:** 
-  * `G pts x 0` -> Load row 0 of column 'x'.
-  * `S pts x 0 val` -> Store val to row 0 of column 'x'.
-* **Efficiency:** Columnar contiguous memory. SIMD-ready.
+## 3. Automatic Parallelism
+* **Heuristic:** The compiler identifies **Pure** (no `S`, `📥`, `📤`) and **Complex** sub-expressions.
+* **Execution:** Heavy sub-trees are automatically forked to a background thread pool and synchronized via a fork-join model.
+* **Benefit:** Implicit multi-core utilization without threading boilerplate.
 
 ## 4. Execution & Entry Point
-* **Binary Target:** Requires a `: main` function definition.
-* **Compilation:** `.llm` -> `llmlang` -> `.o` -> `clang` -> binary.
-* **Runtime:** Linked with `rt.c` for string and system operations.
+* **Binary Target:** Requires a `: main` function.
+* **Runtime:** Linked with `rt.c` (Managed Thread Pool & String Lib).
 
 ## 5. Diagnostic Codes
 * **E003:** OOB Index.
-* **E005:** Double Move (Invalid).
-* **E006:** Unknown Shape.
+* **E005:** Double Move.
 * **E009:** Branch stack state mismatch.
-* **E010:** Unknown function in Apply.
-* **W001:** Linear Leak.
+* **W001:** Unused binding (Legacy warning, now auto-dropped).
 Ref: DIAGNOSTICS.md
-
-## 6. Examples (Dense)
-- Add 1 to arg: `: add1 x + ⮞ ^0 1`
-- Factorial (Recursion): `: fact n ? ^0 * ⚓ ^0 @ fact - ⮞ ^0 1 ⮞ ^0`
-- Local Binding: `: calc x L y + ⮞ ^0 1 * ⚓ y ⚓ y`
-- Library Import: `I math sin : test x @ sin ^0`
-- String Concat: `: greet n ⧉ "Hello, " ⮞ ^0`
-- Regex Check: `: is_digit s ≈ ⮞ ^0 "^[0-9]+$"`
