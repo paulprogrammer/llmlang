@@ -29,8 +29,8 @@
 * **Cache Efficiency:** This yields extreme CPU cache utilization and vectorization (SIMD) opportunities.
 
 ## 6. Primitive Operations Syntax
-* **UTF-8 Symbols for Core Logic:** Base operators use single-character tokens (e.g., `+`, `⮞`, `⚓`, `@`, `?`). 
-* **String Operations:** Native string support using UTF-8 symbols for length (`ℓ`), concatenation (`⧉`), substring (`✂`), location (`🔍`), regex match (`≈`), and split (`🪓`).
+* **UTF-8 Symbols for Core Logic:** Base operators use single-character tokens (e.g., `+`, `⮞`, `⚓`, `@`, `?`, `.`). 
+* **Sequence Operator (`.`):** Implements `. expr1 expr2`, allowing multiple statements to be executed in order within a single-expression body.* **String Operations:** Native string support using UTF-8 symbols for length (`ℓ`), concatenation (`⧉`), substring (`✂`), location (`🔍`), regex match (`≈`), and split (`🪓`).
 * **System I/O:** Explicit handle-based primitives for reading (`📥`) and writing (`📤`).
 * **Environment Access:** System-level configuration access via the `🌍` operator.
 * **Temporal Logic:** High-precision TAI64 labels and calendar primitives (`🕒`, `📅`, `📆`) based on the `libtai` baseline.

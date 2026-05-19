@@ -39,15 +39,20 @@ for arg in "${args[@]}"; do
 done
 
 # Path to the runtime
-RT_SRC="$(dirname "$0")/src/rt.c"
-RT_OBJ="$(dirname "$0")/target/rt.o"
-mkdir -p "$(dirname "$RT_OBJ")"
+RT_DIR="$(dirname "$0")/src/runtime"
+RT_OBJ_DIR="$(dirname "$0")/target/runtime"
+mkdir -p "$RT_OBJ_DIR"
 
-# Ensure runtime is compiled
-clang -c "$RT_SRC" -o "$RT_OBJ"
+# Compile all C runtime files
+for c_file in "$RT_DIR"/*.c; do
+    obj_file="$RT_OBJ_DIR/$(basename "$c_file" .c).o"
+    if [ "$c_file" -nt "$obj_file" ]; then
+        clang -c "$c_file" -o "$obj_file" -I"$RT_DIR"
+    fi
+done
 
-# Call clang to link the object files
-clang "${processed_args[@]}" "$RT_OBJ"
+# Call clang to link the object files including all runtime objects
+clang "${processed_args[@]}" "$RT_OBJ_DIR"/*.o -lpthread
 LINK_RET=$?
 
 # If the user didn't specify -c, we might want to cleanup .o files?

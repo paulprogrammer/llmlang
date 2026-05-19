@@ -10,8 +10,9 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use std::collections::HashMap;
 use walkdir::WalkDir;
-use llmlang::lexer::Lexer;
-use llmlang::parser::{Parser, Expr};
+use llmlang::compiler::lexer::Lexer;
+use llmlang::compiler::parser::Parser;
+use llmlang::compiler::ast::Expr;
 use sha2::{Sha256, Digest};
 use tokio::io::{stdin, stdout, AsyncBufReadExt, AsyncWriteExt, BufReader};
 

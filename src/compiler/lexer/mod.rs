@@ -22,6 +22,7 @@ pub enum Token {
     Eq,        // =
     Lt,        // <
     Gt,        // >
+    Dot,       // .
     BitAnd,    // &
     BitOr,     // |
     BitXor,    // ^
@@ -82,6 +83,7 @@ impl Lexer {
             '=' => Token::Eq,
             '<' => Token::Lt,
             '>' => Token::Gt,
+            '.' => Token::Dot,
             '&' => Token::BitAnd,
             '|' => Token::BitOr,
             ':' => Token::Define,

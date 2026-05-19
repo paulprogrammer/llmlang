@@ -80,6 +80,7 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
 | **Split** | `🪓 s d idx` | Extract segment by delimiter. |
 | **Time** | `🕒`, `📅`, `📆` | TAI64 and Calendar primitives. |
 | **Env** | `🌍 key` | Access system environment variables. |
+| **Sequence** | `. e1 e2` | Evaluate e1 then e2, returning e2. |
 
 ## 5. Understanding Diagnostics
 

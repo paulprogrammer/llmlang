@@ -1,6 +1,7 @@
-use llmlang::lexer::Lexer;
-use llmlang::parser::{Parser, Expr};
-use llmlang::codegen::CodeGen;
+use llmlang::compiler::lexer::Lexer;
+use llmlang::compiler::parser::Parser;
+use llmlang::compiler::ast::Expr;
+use llmlang::compiler::codegen::CodeGen;
 use inkwell::context::Context;
 use std::env;
 use std::fs;

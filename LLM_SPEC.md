@@ -34,6 +34,7 @@
   * `📅` : Time Get. `📅 T index` (0=Y, 1=M, 2=D, 3=H, 4=m, 5=S).
   * `📆` : Time Set. `📆 Y M D H m S` -> TAI64 label.
   * `🌍` : Environment. `🌍 key` (Returns string).
+  * `.` : Sequence. `. expr1 expr2` (Returns expr2).
   * `"` : String Literal. `"text"`
 
 ## 2. Memory & Ownership (AFFINE_TYPING)
@@ -63,3 +64,4 @@ Ref: DIAGNOSTICS.md
 - String Concat: `: greet n ⧉ "Hello, " ⮞ ^0`
 - Regex Check: `: is_digit s ≈ ⮞ ^0 "^[0-9]+$"`
 - Env Access: `: config 🌍 "API_KEY"`
+- Sequence: `: seq . 📤 1 "Part 1\n" 📤 1 "Part 2\n"`

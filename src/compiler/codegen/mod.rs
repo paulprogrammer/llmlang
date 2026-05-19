@@ -2,8 +2,8 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::builder::Builder;
 use inkwell::values::{FunctionValue, BasicValueEnum};
-use crate::parser::{Expr, Param};
-use crate::lexer::Token;
+use crate::compiler::ast::{Expr, Param};
+use crate::compiler::lexer::Token;
 use std::collections::HashMap;
 use inkwell::targets::{Target, TargetMachine, InitializationConfig, FileType};
 use inkwell::OptimizationLevel;
@@ -70,7 +70,11 @@ impl<'ctx> CodeGen<'ctx> {
         global.set_initializer(&string_val);
         global.set_constant(true);
         let ptr = global.as_pointer_value();
-        self.builder.build_ptr_to_int(ptr, self.context.i64_type(), "str_ptr").unwrap().into()
+        let ptr_int = self.builder.build_ptr_to_int(ptr, self.context.i64_type(), "str_ptr").unwrap();
+        
+        let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
+        let func = self.get_or_add_external_fn("llm_strdup", fn_type);
+        self.builder.build_call(func, &[ptr_int.into()], "str_heap").unwrap().try_as_basic_value().basic().expect("E011")
     }
 
     fn emit_auto_drop(&self, val: BasicValueEnum<'ctx>) {
@@ -106,7 +110,8 @@ impl<'ctx> CodeGen<'ctx> {
         for (i, (_orig_idx, _val)) in captures.iter().enumerate() {
             let member_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), env_ptr, &[self.context.i64_type().const_int(i as u64, false)], "cap").unwrap() };
             let loaded = self.builder.build_load(self.context.i64_type(), member_ptr, "val").unwrap();
-            task_stack.push(StackItem { value: loaded, state: VariableState::Available });
+            // Mark as Borrowed so the task doesn't drop them
+            task_stack.push(StackItem { value: loaded, state: VariableState::Borrowed });
         }
 
         // 4. Generate the expression code in the task function
@@ -230,6 +235,9 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Borrow(inner) => {
                 self.gen_expr(inner, stack, expand_map)
             }
+            Expr::MutBorrow(inner) => {
+                self.gen_expr(inner, stack, expand_map)
+            }
             Expr::New(shape_name, count_expr) => {
                 let count = self.gen_expr(count_expr, stack, expand_map).into_int_value();
                 let shapes = self.shapes.borrow();
@@ -329,7 +337,7 @@ impl<'ctx> CodeGen<'ctx> {
                     
                     let mut args_vals = Vec::new();
                     let mut handles = Vec::new();
-                    let parallel_threshold = 15;
+                    let parallel_threshold = 10;
 
                     for (i, arg) in args.iter().enumerate() {
                         if i < args.len() - 1 && arg.is_pure() && arg.complexity() > parallel_threshold {
@@ -500,12 +508,17 @@ impl<'ctx> CodeGen<'ctx> {
                 let call = self.builder.build_call(func, &[k_val.into()], "getenv").unwrap();
                 call.try_as_basic_value().basic().expect("E011")
             }
-            _ => panic!("E001"),
+            Expr::Seq(e1, e2) => {
+                self.gen_expr(e1, stack, expand_map);
+                self.gen_expr(e2, stack, expand_map)
+            }
+            Expr::Shape(_, _, _) | Expr::Import(_, _) | Expr::Define(_, _, _, _) => {
+                self.context.i64_type().const_int(0, false).into()
+            }
         }
     }
 
     pub fn gen_import(&self, _module_alias: &str, symbol_name: &str) {
-        // Register an external function signature
         let i64_type = self.context.i64_type();
         let fn_type = i64_type.fn_type(&[i64_type.into()], false);
         self.module.add_function(symbol_name, fn_type, None);
