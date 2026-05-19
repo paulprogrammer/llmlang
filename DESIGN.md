@@ -32,6 +32,7 @@
 * **UTF-8 Symbols for Core Logic:** Base operators use single-character tokens (e.g., `+`, `⮞`, `⚓`, `@`, `?`). 
 * **String Operations:** Native string support using UTF-8 symbols for length (`ℓ`), concatenation (`⧉`), substring (`✂`), location (`🔍`), regex match (`≈`), and split (`🪓`).
 * **System I/O:** Explicit handle-based primitives for reading (`📥`) and writing (`📤`).
+* **Environment Access:** System-level configuration access via the `🌍` operator.
 * **Temporal Logic:** High-precision TAI64 labels and calendar primitives (`🕒`, `📅`, `📆`) based on the `libtai` baseline.
 
 ## 7. Implementation Details

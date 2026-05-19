@@ -168,6 +168,14 @@ long llm_tai_set(long y, long m, long d, long h, long mn, long s) {
     return TAI_OFFSET + days * 86400 + h * 3600 + mn * 60 + s;
 }
 
+long llm_getenv(long k) {
+    char* key = (char*)k;
+    if (!key) return (long)strdup("");
+    char* val = getenv(key);
+    if (!val) return (long)strdup("");
+    return (long)strdup(val);
+}
+
 // --- Managed Thread Pool ---
 
 #define MAX_THREADS 8

@@ -493,6 +493,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let call = self.builder.build_call(func, &[y_val.into(), m_val.into(), d_val.into(), h_val.into(), mn_val.into(), s_val.into()], "set").unwrap();
                 call.try_as_basic_value().basic().expect("E011")
             }
+            Expr::Env(k) => {
+                let k_val = self.gen_expr(k, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_getenv", fn_type);
+                let call = self.builder.build_call(func, &[k_val.into()], "getenv").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
             _ => panic!("E001"),
         }
     }

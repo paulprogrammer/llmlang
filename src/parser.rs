@@ -39,6 +39,7 @@ pub enum Expr {
     TimeNow,                                // 🕒
     TimeGet(Box<Expr>, Box<Expr>),          // 📅 T index
     TimeSet(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>), // 📆 Y M D H m S
+    Env(Box<Expr>),                         // 🌍 key
 }
 
 impl Expr {
@@ -57,6 +58,7 @@ impl Expr {
             Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) | Expr::TimeNow => false,
             Expr::TimeGet(t, i) => t.is_pure() && i.is_pure(),
             Expr::TimeSet(y, m, d, h, mn, s) => y.is_pure() && m.is_pure() && d.is_pure() && h.is_pure() && mn.is_pure() && s.is_pure(),
+            Expr::Env(_) => false,
             Expr::Define(_, _, body, _) => body.is_pure(),
             Expr::Import(_, _) => false,
             Expr::Shape(_, _, _) => true,
@@ -82,6 +84,7 @@ impl Expr {
             Expr::TimeNow => 5,
             Expr::TimeGet(t, i) => 10 + t.complexity() + i.complexity(),
             Expr::TimeSet(y, m, d, h, mn, s) => 10 + y.complexity() + m.complexity() + d.complexity() + h.complexity() + mn.complexity() + s.complexity(),
+            Expr::Env(k) => 5 + k.complexity(),
             Expr::Import(_, _) | Expr::Shape(_, _, _) => 1,
         }
     }
@@ -149,6 +152,7 @@ impl Expr {
                 y.collect_calls(calls); m.collect_calls(calls); d.collect_calls(calls); 
                 h.collect_calls(calls); mn.collect_calls(calls); s.collect_calls(calls); 
             }
+            Expr::Env(k) => k.collect_calls(calls),
             _ => {}
         }
     }
@@ -227,6 +231,7 @@ impl Expr {
                 y.collect_fingerprint(s); m.collect_fingerprint(s); d.collect_fingerprint(s); 
                 h.collect_fingerprint(s); mn.collect_fingerprint(s); sc.collect_fingerprint(s); 
             }
+            Expr::Env(k) => { s.push_str("🌍"); k.collect_fingerprint(s); }
             Expr::Expand(_) => s.push_str("!"),
             Expr::Let(_, val, body) => {
                 s.push_str("L");
@@ -356,6 +361,10 @@ impl Parser {
                 let mn = self.parse_expr();
                 let s = self.parse_expr();
                 Expr::TimeSet(Box::new(y), Box::new(m), Box::new(d), Box::new(h), Box::new(mn), Box::new(s))
+            }
+            Token::Env => {
+                self.consume();
+                Expr::Env(Box::new(self.parse_expr()))
             }
             Token::Add | Token::Sub | Token::Mul | Token::Div |
             Token::Eq | Token::Lt | Token::Gt | 

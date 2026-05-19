@@ -38,6 +38,7 @@ pub enum Token {
     TimeNow,   // 🕒
     TimeGet,   // 📅
     TimeSet,   // 📆
+    Env,       // 🌍
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -106,6 +107,7 @@ impl Lexer {
             '🕒' => Token::TimeNow,
             '📅' => Token::TimeGet,
             '📆' => Token::TimeSet,
+            '🌍' => Token::Env,
             '"' => self.lex_string(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
