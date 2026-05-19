@@ -178,7 +178,7 @@ fn test_positive_export_sig() {
     }
     let sig = codegen.emit_signature_file();
     assert!(sig.contains("# Point x y"));
-    assert!(sig.contains(": add_x ..."));
+    assert!(sig.contains(": add_x 1"));
 }
 
 #[test]
@@ -212,7 +212,7 @@ fn test_positive_import() {
     let exprs = parser.parse_module();
     for expr in exprs {
         match expr {
-            Expr::Import(m, s) => codegen.gen_import(&m, &s),
+            Expr::Import(m, s, a) => codegen.gen_import(&m, &s, a),
             Expr::Define(n, p, b, _) => { codegen.gen_function(&n, p, &b); },
             _ => {}
         }

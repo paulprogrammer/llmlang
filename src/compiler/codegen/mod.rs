@@ -973,15 +973,16 @@ impl<'ctx> CodeGen<'ctx> {
                 let call = self.builder.build_call(try_func, &[try_fn_int.into(), env_int.into(), fallback_fn_int.into(), env_int.into()], "try_res").unwrap();
                 self.get_call_res(call)
             }
-            Expr::Shape(_, _, _) | Expr::Import(_, _) | Expr::Define(_, _, _, _) => {
+            Expr::Shape(_, _, _) | Expr::Import(..) | Expr::Define(_, _, _, _) => {
                 self.context.i64_type().const_int(0, false).into()
             }
         }
     }
 
-    pub fn gen_import(&self, _module_alias: &str, symbol_name: &str) {
+    pub fn gen_import(&self, _module_alias: &str, symbol_name: &str, arity: usize) {
         let i64_type = self.context.i64_type();
-        let fn_type = i64_type.fn_type(&[i64_type.into()], false);
+        let args_types = vec![i64_type.into(); arity];
+        let fn_type = i64_type.fn_type(&args_types, false);
         self.module.add_function(symbol_name, fn_type, None);
     }
 
@@ -1048,8 +1049,14 @@ impl<'ctx> CodeGen<'ctx> {
         }
         for func in self.module.get_functions() {
             let name = func.get_name().to_str().unwrap();
-            if name == "main" { continue; }
-            sig.push_str(&format!(": {} ...\n", name));
+            if name == "main" || name.starts_with("trap_") || name.starts_with("parallel_") { continue; }
+            let param_count = func.count_params();
+            if param_count > 0 || !self.templates.borrow().contains_key(name) {
+                sig.push_str(&format!(": {} {}\n", name, param_count));
+            }
+        }
+        for (name, (params, _)) in self.templates.borrow().iter() {
+            sig.push_str(&format!(": {} {}\n", name, params.len()));
         }
         sig
     }

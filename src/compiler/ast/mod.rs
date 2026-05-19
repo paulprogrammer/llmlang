@@ -25,7 +25,7 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>, Box<Expr>),    // ? cond true_branch false_branch
     Expand(String),                         // ! name (reference to expand param)
     Let(String, Box<Expr>, Box<Expr>),      // L name val body
-    Import(String, String),                 // I module_alias symbol_name
+    Import(String, String, usize),          // I module_alias symbol_name arity
     String(String),
     Len(Box<Expr>),                         // ℓ expr
     Cat(Box<Expr>, Box<Expr>),              // ⧉ left right

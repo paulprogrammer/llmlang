@@ -36,7 +36,7 @@ impl Expr {
             Expr::TimeOp(_, l, r) => l.is_pure() && r.is_pure(),
             Expr::TimeZone => true,
             Expr::Define(_, _, body, _) => body.is_pure(),
-            Expr::Import(_, _) => false,
+            Expr::Import(..) => false,
             Expr::Shape(_, _, _) => true,
         }
     }
@@ -71,7 +71,7 @@ impl Expr {
             Expr::TimeZone => 5,
             Expr::Panic(e) => 10 + e.complexity(),
             Expr::Trap(t, f) => 20 + t.complexity() + f.complexity(),
-            Expr::Import(_, _) | Expr::Shape(_, _, _) => 1,
+            Expr::Import(..) | Expr::Shape(_, _, _) => 1,
         }
     }
 
@@ -226,7 +226,7 @@ impl Expr {
                 val.collect_fingerprint(s);
                 body.collect_fingerprint(s);
             }
-            Expr::Import(_, _) => s.push_str("I"),
+            Expr::Import(..) => s.push_str("I"),
             Expr::Seq(e1, e2) => { s.push_str("."); e1.collect_fingerprint(s); e2.collect_fingerprint(s); }
             Expr::Pack(e) => { s.push_str("📦"); e.collect_fingerprint(s); }
             Expr::Unpack(e, shape) => { s.push_str(&format!("🎁{}", shape)); e.collect_fingerprint(s); }
@@ -294,7 +294,7 @@ pub fn prune_dead_code(expressions: Vec<Expr>) -> Vec<Expr> {
     expressions.into_iter().filter(|expr| {
         match expr {
             Expr::Define(name, _, _, _) => reachable.contains(name),
-            Expr::Import(_, symbol) => reachable.contains(symbol),
+            Expr::Import(_, symbol, _) => reachable.contains(symbol),
             _ => true, // Keep Shapes, etc.
         }
     }).collect()

@@ -41,6 +41,23 @@ impl Parser {
         None
     }
 
+    fn load_signature(&self, module: &str) -> Vec<(String, usize)> {
+        let sig_path = format!("{}.llms", module);
+        let content = std::fs::read_to_string(&sig_path).unwrap_or_default();
+        let mut sigs = Vec::new();
+        for line in content.lines() {
+            if line.starts_with(':') {
+                let parts: Vec<&str> = line[1..].trim().split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Ok(arity) = parts[1].parse::<usize>() {
+                        sigs.push((parts[0].to_string(), arity));
+                    }
+                }
+            }
+        }
+        sigs
+    }
+
     fn report_error(&self, code: &str) -> ! {
         panic!("{} ({}:{})", code, self.filename, self.lexer.line);
     }
@@ -62,11 +79,6 @@ impl Parser {
                 let val = *f;
                 self.consume();
                 Expr::Float(val)
-            }
-            Token::DeBruijn(i) => {
-                let val = *i;
-                self.consume();
-                Expr::DeBruijn(val)
             }
             Token::Identifier(s) => {
                 let val = s.clone();
@@ -94,6 +106,16 @@ impl Parser {
             Token::MutBorrow => {
                 self.consume();
                 Expr::MutBorrow(Box::new(self.parse_expr()))
+            }
+            Token::Len => {
+                self.consume();
+                Expr::Len(Box::new(self.parse_expr()))
+            }
+            Token::Cat => {
+                self.consume();
+                let left = self.parse_expr();
+                let right = self.parse_expr();
+                Expr::Cat(Box::new(left), Box::new(right))
             }
             Token::Let => {
                 self.consume();
@@ -160,9 +182,9 @@ impl Parser {
             Token::Question => {
                 self.consume();
                 let cond = self.parse_expr();
-                let true_b = self.parse_expr();
-                let false_b = self.parse_expr();
-                Expr::If(Box::new(cond), Box::new(true_b), Box::new(false_b))
+                let t = self.parse_expr();
+                let f = self.parse_expr();
+                Expr::If(Box::new(cond), Box::new(t), Box::new(f))
             }
             Token::Bang => {
                 self.consume();
@@ -175,18 +197,44 @@ impl Parser {
             Token::Export => {
                 self.consume();
                 let mut inner = self.parse_expr();
-                match inner {
-                    Expr::Define(_, _, _, ref mut exp) => *exp = true,
-                    Expr::Shape(_, _, ref mut exp) => *exp = true,
-                    _ => self.report_error("E002"),
+                match &mut inner {
+                    Expr::Define(_, _, _, exported) => *exported = true,
+                    Expr::Shape(_, _, exported) => *exported = true,
+                    _ => self.report_error("E015"),
                 }
                 inner
+            }
+            Token::Money => {
+                self.consume();
+                match self.current_token {
+                    Token::Str => {
+                        self.consume();
+                        Expr::MoneyStr(Box::new(self.parse_expr()))
+                    }
+                    Token::Add | Token::Sub | Token::Mul | Token::Div => {
+                        let op = self.consume();
+                        let left = self.parse_expr();
+                        let right = self.parse_expr();
+                        Expr::MoneyOp(op, Box::new(left), Box::new(right))
+                    }
+                    Token::Integer(i) => {
+                        self.consume();
+                        Expr::Integer(i * 10000)
+                    }
+                    Token::Float(f) => {
+                        self.consume();
+                        Expr::Integer((f * 10000.0) as i64)
+                    }
+                    _ => self.report_error("E002"),
+                }
             }
             Token::Import => {
                 self.consume();
                 let module = if let Token::Identifier(s) = self.consume() { s } else { self.report_error("E002") };
                 let symbol = if let Token::Identifier(s) = self.consume() { s } else { self.report_error("E002") };
-                Expr::Import(module, symbol)
+                let sigs = self.load_signature(&module);
+                let arity = sigs.iter().find(|(name, _)| name == &symbol).map(|(_, a)| *a).unwrap_or(1);
+                Expr::Import(module, symbol, arity)
             }
             Token::Apply(arity) => {
                 let arity = *arity;
@@ -198,22 +246,10 @@ impl Parser {
                 }
                 Expr::Apply(Box::new(func), args)
             }
-            Token::Len => {
+            Token::DeBruijn(index) => {
+                let val = *index;
                 self.consume();
-                Expr::Len(Box::new(self.parse_expr()))
-            }
-            Token::Cat => {
-                self.consume();
-                let l = self.parse_expr();
-                let r = self.parse_expr();
-                Expr::Cat(Box::new(l), Box::new(r))
-            }
-            Token::StrSub => {
-                self.consume();
-                let s = self.parse_expr();
-                let b = self.parse_expr();
-                let l = self.parse_expr();
-                Expr::Sub(Box::new(s), Box::new(b), Box::new(l))
+                Expr::DeBruijn(val)
             }
             Token::Loc => {
                 self.consume();
@@ -253,15 +289,13 @@ impl Parser {
                 self.consume();
                 if arity == 1 {
                     Expr::Pack(Box::new(self.parse_expr()))
-                } else if arity == 2 {
+                } else {
                     let s = self.parse_expr();
                     if let Token::String(shape_name) = self.consume() {
                         Expr::Unpack(Box::new(s), shape_name)
                     } else {
                         self.report_error("E002");
                     }
-                } else {
-                    self.report_error("E002");
                 }
             }
             Token::Map => {
@@ -276,30 +310,6 @@ impl Parser {
                 let inst = self.parse_expr();
                 let func = self.parse_expr();
                 Expr::Filter(Box::new(inst), Box::new(func))
-            }
-            Token::Money => {
-                self.consume();
-                match self.current_token {
-                    Token::Str => {
-                        self.consume();
-                        Expr::MoneyStr(Box::new(self.parse_expr()))
-                    }
-                    Token::Add | Token::Sub | Token::Mul | Token::Div => {
-                        let op = self.consume();
-                        let left = self.parse_expr();
-                        let right = self.parse_expr();
-                        Expr::MoneyOp(op, Box::new(left), Box::new(right))
-                    }
-                    Token::Integer(i) => {
-                        self.consume();
-                        Expr::Integer(i * 10000)
-                    }
-                    Token::Float(f) => {
-                        self.consume();
-                        Expr::Integer((f * 10000.0) as i64)
-                    }
-                    _ => self.report_error("E001"),
-                }
             }
             Token::Panic => {
                 self.consume();
