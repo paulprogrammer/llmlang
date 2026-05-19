@@ -21,7 +21,7 @@
   * `S` : Set (SoA). `S inst field idx val`
   * `X` : Export. `X ...`
   * `L` : Let (Local). `L name val body`
-  * `I` : Import. `I mod symbol`
+  * `I` : Import. `I mod symbol` (Resolves arity/shape via `.llmi`).
   * `^` : De Bruijn. `^0`, `^1` ...
   * `ℓ` : Len. `ℓ string`
   * `⧉` : Cat. `⧉ s1 s2`

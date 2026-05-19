@@ -22,7 +22,7 @@
 * **Strings as Objects:** String literals and dynamic string results are treated as movable objects. Concatenation and other operations allocate from the heap via a small runtime (`rt.c`).
 
 ## 4. Module & Scope Structure
-* **Signature Files (`.llms`):** The compiler generates high-density "header" files containing only signatures (no bodies). Consuming LLMs only need to read these files, saving thousands of tokens.
+* **LLM Interface Files (`.llmi`):** The compiler generates high-density "header" files containing only signatures (no bodies). Consuming LLMs and the compiler use these files for cross-module discovery, saving thousands of tokens.
 
 ## 5. Data Layout (Data-Oriented)
 * **Struct of Arrays (SoA):** The language natively enforces a columnar memory layout. 

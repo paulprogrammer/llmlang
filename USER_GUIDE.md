@@ -71,9 +71,34 @@ Example:
     📤 1 ⧉ "Current Year: " 🧵 ⮞ year
 ```
 
-## 4. Linking with External Libraries (C Interop)
+## 4. Cross-Module Imports (`.llmi`)
 
-`llmlang` can easily interface with C libraries. Since it outputs standard LLVM IR, you can link it with object files compiled from C.
+`llmlang` supports modular programming via structural signature files with the `.llmi` (LLM Interface) extension.
+
+### The `.llmi` Workflow
+When you compile a module with an output path, `llmlang` automatically generates a `.llmi` file. This file contains the signatures of all exported symbols (`X`) and shape definitions.
+
+1.  **Define Library (`math.llm`):**
+    ```llm
+    X : add x y + ⚓ x ⚓ y
+    ```
+2.  **Compile Library:**
+    ```bash
+    ./llm-clang -c math.llm -o math.o
+    # Generates math.o and math.llmi
+    ```
+3.  **Import in Client (`main.llm`):**
+    ```llm
+    I math add
+    : main @2 add 10 20
+    ```
+4.  **Link and Run:**
+    ```bash
+    ./llm-clang math.o main.llm -o main
+    ./main
+    ```
+
+`llm-clang` handles linking multiple `.llm` and `.o` files automatically. 
 
 ### Standard Libraries
 For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://github.com/paulprogrammer/llmlang-math) implementation. It serves as a reference for creating and importing portable modules.
