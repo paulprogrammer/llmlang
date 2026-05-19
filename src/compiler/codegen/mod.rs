@@ -213,7 +213,7 @@ impl<'ctx> CodeGen<'ctx> {
                 item.value
             }
             Expr::BinaryOp(op, left, right) => {
-                let parallel_threshold = 1000;
+                let parallel_threshold = 50;
                 let mut left_handle = None;
                 if left.is_pure() && left.complexity() > parallel_threshold {
                     left_handle = Some(self.gen_parallel_expr(left, stack, expand_map));
@@ -395,7 +395,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let template_opt = self.templates.borrow().get(name).cloned();
                     let mut args_vals = Vec::new();
                     let mut handles = Vec::new();
-                    let parallel_threshold = 1000;
+                    let parallel_threshold = 50;
                     for (i, arg) in args.iter().enumerate() {
                         if i < args.len() - 1 && arg.is_pure() && arg.complexity() > parallel_threshold {
                             handles.push((i, self.gen_parallel_expr(arg, stack, expand_map)));

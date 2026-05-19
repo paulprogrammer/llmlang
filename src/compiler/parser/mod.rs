@@ -51,7 +51,7 @@ impl Parser {
         tok
     }
 
-    fn parse_expr(&mut self) -> Expr {
+    pub fn parse_expr(&mut self) -> Expr {
         let res = match &self.current_token {
             Token::Integer(i) => {
                 let val = *i;
@@ -279,14 +279,26 @@ impl Parser {
             }
             Token::Money => {
                 self.consume();
-                if let Token::Str = self.current_token {
-                    self.consume();
-                    Expr::MoneyStr(Box::new(self.parse_expr()))
-                } else {
-                    let op = self.consume();
-                    let left = self.parse_expr();
-                    let right = self.parse_expr();
-                    Expr::MoneyOp(op, Box::new(left), Box::new(right))
+                match self.current_token {
+                    Token::Str => {
+                        self.consume();
+                        Expr::MoneyStr(Box::new(self.parse_expr()))
+                    }
+                    Token::Add | Token::Sub | Token::Mul | Token::Div => {
+                        let op = self.consume();
+                        let left = self.parse_expr();
+                        let right = self.parse_expr();
+                        Expr::MoneyOp(op, Box::new(left), Box::new(right))
+                    }
+                    Token::Integer(i) => {
+                        self.consume();
+                        Expr::Integer(i * 10000)
+                    }
+                    Token::Float(f) => {
+                        self.consume();
+                        Expr::Integer((f * 10000.0) as i64)
+                    }
+                    _ => self.report_error("E001"),
                 }
             }
             Token::Panic => {
