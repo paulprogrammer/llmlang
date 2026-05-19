@@ -28,7 +28,34 @@ echo $?
 # Output: 42
 ```
 
-## 2. Temporal Logic (libtai Baseline)
+## 2. Compiler Configuration
+
+`llmlang` supports external configuration via command-line flags or a JSON configuration file.
+
+### CLI Options
+
+| Flag | Description | Default |
+| :--- | :--- | :--- |
+| `-o <path>` | Set output binary/object path. | `a.out` |
+| `-S, --emit-ir` | Emit LLVM IR instead of binary. | `false` |
+| `-c, --config <file>` | Load a JSON config file. | `None` |
+| `--parallel <n>` | Complexity threshold for auto-parallelism. | `50` |
+| `--threads <n>` | Number of worker threads in the pool. | `8` |
+| `--queue <n>` | Work-stealing queue size. | `64` |
+
+### Configuration File (`llmlang.json`)
+
+You can also use a JSON file for configuration. Flags provided on the CLI will override values in the file.
+
+```json
+{
+  "parallel_threshold": 100,
+  "max_threads": 4,
+  "queue_size": 32
+}
+```
+
+## 3. Temporal Logic (libtai Baseline)
 
 `llmlang` uses a high-precision temporal model inspired by D.J. Bernstein's `libtai`. It distinguishes between **TAI64 labels** (atomic time) and **Calendar Time**.
 
@@ -44,14 +71,14 @@ Example:
     📤 1 ⧉ "Current Year: " 🧵 ⮞ year
 ```
 
-## 3. Linking with External Libraries (C Interop)
+## 4. Linking with External Libraries (C Interop)
 
 `llmlang` can easily interface with C libraries. Since it outputs standard LLVM IR, you can link it with object files compiled from C.
 
 ### Standard Libraries
 For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://github.com/paulprogrammer/llmlang-math) implementation. It serves as a reference for creating and importing portable modules.
 
-## 4. Language Quick Reference
+## 5. Language Quick Reference
 
 | Operation | Syntax | Description |
 | :--- | :--- | :--- |
@@ -90,7 +117,7 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
 | **Env** | `🌍 key` | Access system environment variables. |
 | **Sequence** | `. e1 e2` | Evaluate e1 then e2, returning e2. |
 
-## 5. Business Logic Example
+## 6. Business Logic Example
 
 ```llm
 # Invoice id i64 amount i64
@@ -109,6 +136,6 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
     0
 ```
 
-## 6. Understanding Diagnostics
+## 7. Understanding Diagnostics
 
 If the compiler outputs a code like `E005` or `W001`, refer to [DIAGNOSTICS.md](./DIAGNOSTICS.md) for the human-readable mapping. These codes are optimized to save LLM tokens.
