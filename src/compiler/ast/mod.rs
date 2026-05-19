@@ -37,6 +37,7 @@ pub enum Expr {
     Str(Box<Expr>),                         // 🧵 int
     Split(Box<Expr>, Box<Expr>, Box<Expr>), // 🪓 string delim index
     TimeNow,                                // 🕒
+    TimeNano,                               // 🕒⌛
     TimeGet(Box<Expr>, Box<Expr>),          // 📅 T index
     TimeSet(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>), // 📆 Y M D H m S
     Env(Box<Expr>),                         // 🌍 key
@@ -77,7 +78,7 @@ impl Expr {
             Expr::Let(_, v, b) => v.is_pure() && b.is_pure(),
             Expr::New(_, c) => c.is_pure(),
             Expr::Get(i, _, idx) => i.is_pure() && idx.is_pure(),
-            Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) | Expr::TimeNow | Expr::Env(_) | Expr::Panic(_) | Expr::Trap(_, _) => false,
+            Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) | Expr::TimeNow | Expr::TimeNano | Expr::Env(_) | Expr::Panic(_) | Expr::Trap(_, _) => false,
             Expr::TimeGet(t, i) => t.is_pure() && i.is_pure(),
             Expr::TimeSet(y, m, d, h, mn, s) => y.is_pure() && m.is_pure() && d.is_pure() && h.is_pure() && mn.is_pure() && s.is_pure(),
             Expr::Pack(e) => e.is_pure(),
@@ -110,7 +111,7 @@ impl Expr {
             Expr::Define(_, _, body, _) => body.complexity(),
             Expr::Read(h) => 1 + h.complexity(),
             Expr::Write(h, s) => 1 + h.complexity() + s.complexity(),
-            Expr::TimeNow => 5,
+            Expr::TimeNow | Expr::TimeNano => 5,
             Expr::TimeGet(t, i) => 10 + t.complexity() + i.complexity(),
             Expr::TimeSet(y, m, d, h, mn, s) => 10 + y.complexity() + m.complexity() + d.complexity() + h.complexity() + mn.complexity() + s.complexity(),
             Expr::Env(k) => 5 + k.complexity(),
@@ -180,7 +181,7 @@ impl Expr {
                 val.collect_calls(calls);
             }
             Expr::Sub(s, b, l) | Expr::Split(s, b, l) => { s.collect_calls(calls); b.collect_calls(calls); l.collect_calls(calls); }
-            Expr::TimeNow | Expr::TimeZone => {}
+            Expr::TimeNow | Expr::TimeNano | Expr::TimeZone => {}
             Expr::TimeGet(t, i) => { t.collect_calls(calls); i.collect_calls(calls); }
             Expr::TimeSet(y, m, d, h, mn, s) => { 
                 y.collect_calls(calls); m.collect_calls(calls); d.collect_calls(calls); 
@@ -258,6 +259,7 @@ impl Expr {
             Expr::Str(e) => { s.push_str("🧵"); e.collect_fingerprint(s); }
             Expr::Split(str, d, idx) => { s.push_str("🪓"); str.collect_fingerprint(s); d.collect_fingerprint(s); idx.collect_fingerprint(s); }
             Expr::TimeNow => { s.push_str("🕒"); }
+            Expr::TimeNano => { s.push_str("🕒⌛"); }
             Expr::TimeZone => { s.push_str("🕒🌍"); }
             Expr::TimeGet(t, i) => { s.push_str("📅"); t.collect_fingerprint(s); i.collect_fingerprint(s); }
             Expr::TimeSet(y, m, d, h, mn, sc) => { 

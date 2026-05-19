@@ -6,6 +6,12 @@ long llm_tai_now() {
     return TAI_OFFSET + (long)time(NULL);
 }
 
+long llm_tai_nano() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long)ts.tv_sec * 1000000000LL + (long)ts.tv_nsec;
+}
+
 // Correct Gregorian calendar math
 long llm_tai_get(long tai, long component) {
     long s = tai - TAI_OFFSET;

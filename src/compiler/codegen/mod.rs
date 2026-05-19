@@ -507,6 +507,7 @@ impl<'ctx> CodeGen<'ctx> {
                             call_args.push(val.into());
                         }
                         let call = self.builder.build_call(function, &call_args, "calltmp").unwrap();
+                        call.set_tail_call(true); // LLVM will optimize if possible
                         self.get_call_res(call)
                     }
                 } else {
@@ -613,6 +614,12 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = self.context.i64_type().fn_type(&[], false);
                 let func = self.get_or_add_external_fn("llm_tai_now", fn_type);
                 let call = self.builder.build_call(func, &[], "now").unwrap();
+                self.get_call_res(call)
+            }
+            Expr::TimeNano => {
+                let fn_type = self.context.i64_type().fn_type(&[], false);
+                let func = self.get_or_add_external_fn("llm_tai_nano", fn_type);
+                let call = self.builder.build_call(func, &[], "nano").unwrap();
                 self.get_call_res(call)
             }
             Expr::TimeGet(t, i) => {

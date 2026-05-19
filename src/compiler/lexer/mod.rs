@@ -43,6 +43,7 @@ pub enum Token {
     Panic,     // 🚨
     Trap,      // 🛡️
     TimeNow,   // 🕒
+    TimeNano,  // 🕒⌛
     TimeGet,   // 📅
     TimeSet,   // 📆
     Env,       // 🌍
@@ -118,7 +119,7 @@ impl Lexer {
             '\u{1F4B0}' => Token::Money,
             '\u{1F6A8}' => Token::Panic,
             '\u{1F6E1}' => Token::Trap,
-            '\u{1F552}' => Token::TimeNow,
+            '\u{1F552}' => self.lex_clock(),
             '\u{1F4C5}' => Token::TimeGet,
             '\u{1F4C6}' => Token::TimeSet,
             '\u{1F30D}' => Token::Env,
@@ -218,6 +219,15 @@ impl Lexer {
             self.pos += 1; // consume "
         }
         Token::String(s)
+    }
+
+    fn lex_clock(&mut self) -> Token {
+        if self.pos < self.input.len() && self.input[self.pos] == '\u{231B}' {
+            self.pos += 1;
+            Token::TimeNano
+        } else {
+            Token::TimeNow
+        }
     }
 
     fn lex_slash(&mut self) -> Token {

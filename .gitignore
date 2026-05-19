@@ -4,3 +4,5 @@
 *_bin
 out.llms
 /.gemini/
+benchmarks/*_sum
+benchmarks/*_llm

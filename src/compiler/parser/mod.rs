@@ -325,6 +325,10 @@ impl Parser {
                     Expr::TimeNow
                 }
             }
+            Token::TimeNano => {
+                self.consume();
+                Expr::TimeNano
+            }
             Token::TimeGet => {
                 self.consume();
                 let t = self.parse_expr();
