@@ -1,0 +1,31 @@
+// string_utils.llm
+// Demonstrates the full string manipulation suite
+
+: check_email email
+    ? ≈ ⚓ ^0 "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+        📤 1 ⧉ ⚓ ^0 " is a valid email.\n"
+    :
+        📤 2 ⧉ ⚓ ^0 " is INVALID.\n"
+    ⮞ email
+
+: main
+    L s "User:paul programmer:1234"
+    
+    // Split on colon
+    L user 🪓 ⚓ s ":" 0
+    L name 🪓 ⚓ s ":" 1
+    L id   🪓 ⚓ s ":" 2
+    
+    📤 1 ⧉ "ID: " ⧉ ⚓ id ⧉ " Name: " ⧉ ⚓ name "\n"
+    
+    // Substring and Search
+    L pos 🔍 ⚓ s "paul"
+    📤 1 ⧉ "Found paul at: " ⧉ 🧵 ⮞ pos "\n"
+    
+    // Length
+    📤 1 ⧉ "Total length: " ⧉ 🧵 ℓ ⚓ s "\n"
+    
+    @ check_email "test@example.com"
+    @ check_email "bad-email"
+    
+    // Auto-drop handles 's', 'user', 'name', 'id'

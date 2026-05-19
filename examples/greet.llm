@@ -1,0 +1,9 @@
+// greet.llm
+// Simple stdio interaction
+// 📥 0: Read from stdin
+// 📤 1: Write to stdout
+
+: main
+    📤 1 "Enter your name: "
+    L name 📥 0
+    📤 1 ⧉ "Hello, " ⧉ ⮞ name "!\n"

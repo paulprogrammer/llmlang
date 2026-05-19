@@ -1,0 +1,11 @@
+// parallel_bench.llm
+// Demonstrates automatic parallelism pass
+// The compiler will lift heavy pure sub-trees into threads.
+
+: heavy_math n
+    + + + + + + + + + + ^0 ^0 ^0 ^0 ^0 ^0 ^0 ^0 ^0 ^0 ^0
+
+: main
+    // This addition of heavy functions will be auto-parallelized
+    L result + @ heavy_math 100 @ heavy_math 200
+    📤 1 ⧉ "Result: " ⧉ 🧵 ⮞ result "\n"
