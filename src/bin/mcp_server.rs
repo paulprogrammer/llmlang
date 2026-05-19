@@ -288,7 +288,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 "capabilities": caps,
                                 "serverInfo": {
                                     "name": "llm-mcp",
-                                    "version": "0.1.3"
+                                    "version": env!("CARGO_PKG_VERSION")
                                 }
                             });
                             changed = true;
