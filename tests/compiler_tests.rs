@@ -16,6 +16,18 @@ fn test_positive_math() {
 }
 
 #[test]
+fn test_positive_div() {
+    let context = Context::create();
+    let input = "/ 10 2";
+    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let codegen = CodeGen::new(&context, "test");
+    codegen.gen_function("main", vec![], &ast);
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("sdiv i64 10, 2") || ir.contains("ret i64 5"));
+}
+
+
+#[test]
 fn test_positive_debruijn() {
     let context = Context::create();
     let input = ": add_one x + ^0 1";

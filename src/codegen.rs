@@ -85,6 +85,7 @@ impl<'ctx> CodeGen<'ctx> {
                     Token::Add => self.builder.build_int_add(lhs, rhs, "addtmp").unwrap().into(),
                     Token::Sub => self.builder.build_int_sub(lhs, rhs, "subtmp").unwrap().into(),
                     Token::Mul => self.builder.build_int_mul(lhs, rhs, "multmp").unwrap().into(),
+                    Token::Div => self.builder.build_int_signed_div(lhs, rhs, "divtmp").unwrap().into(),
                     _ => panic!("E008"),
                 }
             }
