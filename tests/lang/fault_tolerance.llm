@@ -1,0 +1,11 @@
+: risky_failure
+    🚨 "Intentional failure"
+
+: main
+    . L caught 🛡️ @0 risky_failure 0
+      ? ⚓ caught 🚨 "Trap failed" 0
+    . L success 🛡️ 42 0
+      ? = ⚓ success 42 0 🚨 "Success failed"
+    . L nested 🛡️ 🛡️ 🚨 "Deep" 1 2
+      ? = ⚓ nested 1 0 🚨 "Nested failed"
+    0

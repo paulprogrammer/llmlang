@@ -1,0 +1,61 @@
+#!/bin/bash
+# llm-test - A simple test runner for pure llmlang tests
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+PASSED=0
+FAILED=0
+TEST_FILES=()
+OTHER_ARGS=()
+
+for arg in "$@"; do
+    if [[ "$arg" == *.llm ]]; then
+        TEST_FILES+=("$arg")
+    elif [[ -f "$arg" ]]; then
+        TEST_FILES+=("$arg")
+    else
+        OTHER_ARGS+=("$arg")
+    fi
+done
+
+if [ ${#TEST_FILES[@]} -eq 0 ]; then
+    TEST_FILES=(tests/lang/*.llm)
+fi
+
+echo "Running llmlang self-hosted tests..."
+echo "------------------------------------"
+
+for test_file in "${TEST_FILES[@]}"; do
+    test_name=$(basename "$test_file")
+    bin_name="${test_file%.llm}_bin"
+    
+    ./llm-clang "$test_file" "${OTHER_ARGS[@]}" -o "$bin_name" > /dev/null 2>&1
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}[FAIL]${NC} $test_name (Compilation failed)"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
+    
+    ./"$bin_name" > /dev/null 2>&1
+    exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        echo -e "${GREEN}[PASS]${NC} $test_name"
+        PASSED=$((PASSED + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} $test_name (Exit code: $exit_code)"
+        FAILED=$((FAILED + 1))
+    fi
+    
+    rm "$bin_name"
+done
+
+echo "------------------------------------"
+echo -e "Summary: ${GREEN}$PASSED passed${NC}, ${RED}$FAILED failed${NC}"
+
+if [ $FAILED -gt 0 ]; then
+    exit 1
+fi

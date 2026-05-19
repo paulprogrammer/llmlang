@@ -1,0 +1,15 @@
+// String Operations
+
+: main
+    L s1 "Hello "
+    L s2 "World"
+    L s3 ⧉ ⚓ s1 ⚓ s2
+    . ? ≈ ⚓ s3 "^Hello.*" 0 🚨 "Regex match failed"
+    . ? = ℓ ⚓ s3 11 0 🚨 "Length failed"
+    . ? = 🔍 ⚓ s3 "World" 6 0 🚨 "Loc failed"
+    L sub ✂ ⮞ s3 0 5
+    . ? ≈ ⮞ sub "Hello" 0 🚨 "Sub failed"
+    L csv "a,b,c"
+    ? ≈ 🪓 ⚓ csv "," 1 "b"
+        0
+        🚨 "Split failed"

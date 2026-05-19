@@ -1,50 +1,38 @@
 #include "common.h"
 
-#define TAI_OFFSET 4611686018427387904LL // 2^62
+#define TAI_OFFSET 4611686018427387914LL
 
 long llm_tai_now() {
-    return TAI_OFFSET + (long)time(NULL) + 37;
+    return TAI_OFFSET + (long)time(NULL);
 }
 
+// Correct Gregorian calendar math
 long llm_tai_get(long tai, long component) {
     long s = tai - TAI_OFFSET;
-    if (s < 0) s = 0;
-
-    long second = s % 60; s /= 60;
-    long minute = s % 60; s /= 60;
-    long hour = s % 24; s /= 24;
-
-    long d = s;
-    long y = (10000 * d + 14780) / 3652425;
-    long d_rem = d - (365 * y + y / 4 - y / 100 + y / 400);
-    if (d_rem < 0) {
-        y--;
-        d_rem = d - (365 * y + y / 4 - y / 100 + y / 400);
-    }
-    long mi = (100 * d_rem + 52) / 3060;
-    long month = (mi + 2) % 12 + 1;
-    y += (mi + 2) / 12;
-    long day = d_rem - (306 * mi + 5) / 10 + 1;
+    struct tm tm;
+    time_t t = (time_t)s;
+    gmtime_r(&t, &tm);
 
     switch(component) {
-        case 0: return y + 1970;
-        case 1: return month;
-        case 2: return day;
-        case 3: return hour;
-        case 4: return minute;
-        case 5: return second;
+        case 0: return (long)tm.tm_year + 1900;
+        case 1: return (long)tm.tm_mon + 1;
+        case 2: return (long)tm.tm_mday;
+        case 3: return (long)tm.tm_hour;
+        case 4: return (long)tm.tm_min;
+        case 5: return (long)tm.tm_sec;
         default: return 0;
     }
 }
 
 long llm_tai_set(long y, long m, long d, long h, long mn, long s) {
-    long year = y - 1970;
-    if (m <= 2) {
-        year--;
-        m += 12;
-    }
-    long days = (long)(365 * year + year / 4 - year / 100 + year / 400 + (306 * (m + 1)) / 10 - 428 + d - 1);
-    return TAI_OFFSET + days * 86400 + h * 3600 + mn * 60 + s;
+    struct tm tm = {0};
+    tm.tm_year = (int)y - 1900;
+    tm.tm_mon = (int)m - 1;
+    tm.tm_mday = (int)d;
+    tm.tm_hour = (int)h;
+    tm.tm_min = (int)mn;
+    tm.tm_sec = (int)s;
+    return TAI_OFFSET + (long)timegm(&tm);
 }
 
 long llm_timezone() {

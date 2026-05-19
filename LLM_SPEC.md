@@ -4,28 +4,30 @@
 ## 1. Syntax & Grammar
 * **Form:** Prefix-arity AST.
 * **Tokens:** Single-char ASCII and UTF-8 symbols.
+* **Comments:** `//` (Line comment).
 * **Operators:** 
-  * `+`, `-`, `*`, `/` : Binary arithmetic (Auto-parallel if heavy).
-  * `=`, `<`, `>` : Comparison (Returns 0 or 1).
-  * `&`, `|`, `^` : Bitwise AND, OR, XOR.
-  * `@` : Application. `@<n> func arg1...` (Auto-parallel arguments).
-  * `?` : Branching. `? cond true_expr false_expr`
-  * `:` : Define. `: name arg1... body`
+  * `+`, `-`, `*`, `/` : Binary Math. 
+  * `⮞` : Move (Consume). `⮞ ^idx`
+  * `⚓` : Borrow (Read). `⚓ ^idx`
+  * `~` : MutBorrow. `~ ^idx`
+  * `=` , `<`, `>` : Binary Comparison.
+  * `&`, `|`, `^` : Bitwise.
+  * `:` : Define. `: name args body`
+  * `#` : Shape (SoA). `# Name f1 f2 ...`
+  * `?` : Branch. `? cond t f`
+  * `!` : Expand (Template). `! name`
+  * `N` : New (SoA). `N Shape count`
+  * `G` : Get (SoA). `G inst field idx`
+  * `S` : Set (SoA). `S inst field idx val`
   * `X` : Export. `X ...`
-  * `L` : Let binding. `L name val body`
-  * `I` : Import. `I module_alias symbol_name`
-  * `#` : Shape (SoA). `# Name field1 field2...`
-  * `N` : New (Alloc). `N Shape count`
-  * `G` : Get (Load). `G inst field idx`
-  * `S` : Set (Store). `S inst field idx val`
-  * `⮞` : Move (Consume). `⮞ name`
-  * `⚓` : Borrow (Read). `⚓ name`
-  * `^n`: De Bruijn Index. `^0` = nearest scope.
-  * `ℓ` : Length (String). `ℓ str`
-  * `⧉` : Concat (String). `⧉ left right`
-  * `✂` : Substring. `✂ str start len`
-  * `🔍` : Location. `🔍 str pattern`
-  * `≈` : Regex Match. `≈ str regex`
+  * `L` : Let (Local). `L name val body`
+  * `I` : Import. `I mod symbol`
+  * `^` : De Bruijn. `^0`, `^1` ...
+  * `ℓ` : Len. `ℓ string`
+  * `⧉` : Cat. `⧉ s1 s2`
+  * `✂` : Sub. `✂ s start len`
+  * `🔍` : Loc. `🔍 s pat`
+  * `≈` : Reg. `≈ s regex`
   * `📥` : Read. `📥 handle`
   * `📤` : Write. `📤 handle string`
   * `🧵` : Stringify. `🧵 int`
@@ -48,31 +50,18 @@
 
 ## 2. Memory & Ownership (AFFINE_TYPING)
 1. **Rule:** Bindings can be consumed at most ONCE. Unconsumed bindings are auto-dropped at end of scope.
-2. **Move (`⮞`):** Transfers ownership. Target becomes unavailable (`E004`).
-3. **Borrow (`⚓`):** Concurrent read. Does not consume.
-4. **Auto-Drop:** SoA structures are recursively freed when they go out of scope.
+2. **Move (`⮞`):** Transfer ownership.
+3. **Borrow (`⚓`):** Read-only access.
+4. **MutBorrow (`~`):** Mutable access.
 
-## 3. Name Resolution
-* **Automatic:** Identifiers (e.g. `u`, `json`) are automatically mapped to De Bruijn indices during parsing.
-* **Mixed Mode:** Both named identifiers and explicit indices (`^0`) are supported.
+## 3. Data Layout (SoA)
+* **Principle:** Struct of Arrays for SIMD-readiness.
+* **Metadata:** Index 0 = Count. Index 1..n = Column Pointers.
 
-## 4. Automatic Parallelism
-* **Heuristic:** The compiler identifies **Pure** (no `S`, `📥`, `📤`, `🕒`, `🌍`) and **Complex** sub-expressions.
-* **Execution:** Heavy sub-trees are automatically forked to a background thread pool and synchronized via a fork-join model.
-
-## 5. Execution & Entry Point
-* **Binary Target:** Requires a `: main` function.
-* **Runtime:** Linked with modular C runtime (IO, Memory, Strings, Threads, Time, JSON).
-
-## 6. Diagnostic Codes
-* **E003:** OOB Index.
-* **E005:** Double Move.
-* **E006:** Unknown Shape.
-* **E009:** Branch stack state mismatch.
-Ref: DIAGNOSTICS.md
-
-## 7. Examples (Dense)
-- Add 1 to arg: `: add1 x + ⮞ x 1`
+## 4. Examples (Dense)
+- Add: `+ 10 20`
+- Let: `L x 10 + ⚓ x 5`
+- If: `? = ⚓ x 10 "yes" "no"`
 - Factorial (Recursion): `: fact n ? ⚓ n * ⚓ n @ fact - ⮞ n 1 ⮞ n`
 - JSON Roundtrip: `: trip L u N User 1 . S ⚓ u id 0 1 L j 📦 ⚓ u 📦2 ⮞ j "User"`
 - Env Access: `: config 🌍 "API_KEY"`

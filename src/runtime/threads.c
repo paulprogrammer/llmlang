@@ -24,6 +24,26 @@ typedef struct {
 
 static llm_pool_t* pool = NULL;
 
+static void llm_do_work() {
+    pthread_mutex_lock(&pool->mutex);
+    if (pool->count == 0) {
+        pthread_mutex_unlock(&pool->mutex);
+        return;
+    }
+    llm_work_item_t work = pool->queue[pool->head];
+    pool->head = (pool->head + 1) % llm_queue_size;
+    pool->count--;
+    pthread_mutex_unlock(&pool->mutex);
+
+    void* result = work.fn(work.arg);
+
+    pthread_mutex_lock(work.task_mutex);
+    *work.result_ptr = result;
+    *work.done = 1;
+    pthread_cond_signal(work.task_cond);
+    pthread_mutex_unlock(work.task_mutex);
+}
+
 void* llm_worker(void* arg) {
     while (1) {
         pthread_mutex_lock(&pool->mutex);
@@ -34,18 +54,8 @@ void* llm_worker(void* arg) {
             pthread_mutex_unlock(&pool->mutex);
             break;
         }
-        llm_work_item_t work = pool->queue[pool->head];
-        pool->head = (pool->head + 1) % llm_queue_size;
-        pool->count--;
         pthread_mutex_unlock(&pool->mutex);
-
-        void* result = work.fn(work.arg);
-
-        pthread_mutex_lock(work.task_mutex);
-        *work.result_ptr = result;
-        *work.done = 1;
-        pthread_cond_signal(work.task_cond);
-        pthread_mutex_unlock(work.task_mutex);
+        llm_do_work();
     }
     return NULL;
 }
@@ -100,16 +110,36 @@ long llm_fork(long fn_ptr, long arg_ptr) {
 
 long llm_join(long handle_ptr) {
     llm_task_handle_t* handle = (llm_task_handle_t*)handle_ptr;
-    pthread_mutex_lock(&handle->mutex);
-    while (!handle->done) {
-        pthread_cond_wait(&handle->cond, &handle->mutex);
+    
+    while (1) {
+        pthread_mutex_lock(&handle->mutex);
+        if (handle->done) {
+            void* res = handle->result;
+            pthread_mutex_unlock(&handle->mutex);
+            
+            pthread_mutex_destroy(&handle->mutex);
+            pthread_cond_destroy(&handle->cond);
+            free(handle);
+            return (long)res;
+        }
+        pthread_mutex_unlock(&handle->mutex);
+        
+        // Help the pool while waiting to avoid deadlock
+        llm_do_work();
+        
+        // If we still aren't done, wait a tiny bit or just loop
+        pthread_mutex_lock(&handle->mutex);
+        if (!handle->done) {
+            // For now, a short cond_wait is safest
+            struct timespec timeout;
+            clock_gettime(CLOCK_REALTIME, &timeout);
+            timeout.tv_nsec += 1000000; // 1ms
+            if (timeout.tv_nsec >= 1000000000) {
+                timeout.tv_nsec -= 1000000000;
+                timeout.tv_sec += 1;
+            }
+            pthread_cond_timedwait(&handle->cond, &handle->mutex, &timeout);
+        }
+        pthread_mutex_unlock(&handle->mutex);
     }
-    void* res = handle->result;
-    pthread_mutex_unlock(&handle->mutex);
-    
-    pthread_mutex_destroy(&handle->mutex);
-    pthread_cond_destroy(&handle->cond);
-    free(handle);
-    
-    return (long)res;
 }

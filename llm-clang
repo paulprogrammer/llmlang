@@ -20,21 +20,45 @@ fi
 
 args=("$@")
 processed_args=()
+compiler_args=()
 tmp_files=()
 
-for arg in "${args[@]}"; do
+# Extract compiler-specific flags
+i=0
+while [ $i -lt ${#args[@]} ]; do
+    arg="${args[$i]}"
+    case "$arg" in
+        --parallel|--threads|--queue|--config|-c)
+            compiler_args+=("$arg")
+            i=$((i + 1))
+            compiler_args+=("${args[$i]}")
+            ;;
+        *.llm)
+            # Handled in the next loop
+            processed_args+=("$arg")
+            ;;
+        *)
+            processed_args+=("$arg")
+            ;;
+    esac
+    i=$((i + 1))
+done
+
+# We need to re-process because of the weird way clang-wrapper works
+final_args=()
+for arg in "${processed_args[@]}"; do
     if [[ "$arg" == *.llm ]]; then
         # Create a temporary object file
         obj="${arg%.llm}.o"
-        "$LLMLANG_BIN" "$arg" -o "$obj"
+        "$LLMLANG_BIN" "$arg" "${compiler_args[@]}" -o "$obj"
         if [ $? -ne 0 ]; then
             echo "Error: llmlang failed to compile $arg"
             exit 1
         fi
-        processed_args+=("$obj")
+        final_args+=("$obj")
         tmp_files+=("$obj")
     else
-        processed_args+=("$arg")
+        final_args+=("$arg")
     fi
 done
 
@@ -52,7 +76,7 @@ for c_file in "$RT_DIR"/*.c; do
 done
 
 # Call clang to link the object files including all runtime objects
-clang "${processed_args[@]}" "$RT_OBJ_DIR"/*.o -lpthread
+clang "${final_args[@]}" "$RT_OBJ_DIR"/*.o -lpthread
 LINK_RET=$?
 
 # If the user didn't specify -c, we might want to cleanup .o files?
