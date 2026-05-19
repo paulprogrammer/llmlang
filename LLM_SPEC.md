@@ -53,4 +53,4 @@ Ref: DIAGNOSTICS.md
 - Add 1 to arg: `: add1 x + ⮞ ^0 1`
 - Factorial (Recursion): `: fact n ? ^0 * ⚓ ^0 @ fact - ⮞ ^0 1 ⮞ ^0`
 - Local Binding: `: calc x L y + ⮞ ^0 1 * ⚓ y ⚓ y`
-- Library Import: `I math sin : test x @ sin ^0`
+- Library Import: `I math sin : test x @ sin ^0` (Ref: [llmlang-math](https://github.com/paulprogrammer/llmlang-math))

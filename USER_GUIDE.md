@@ -74,6 +74,9 @@ The LLM only needs to read `math_lib.llms` to understand how to call your librar
   @ add_vec2 ...
 ```
 
+### Standard Libraries
+For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://github.com/paulprogrammer/llmlang-math) implementation. It serves as a reference for creating and importing portable modules.
+
 ## 5. Language Quick Reference
 
 | Operation | Syntax | Description |
