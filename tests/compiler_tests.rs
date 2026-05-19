@@ -459,11 +459,26 @@ fn test_positive_trap() {
 }
 
 #[test]
-fn test_positive_functional_iterators() {
+fn test_integration_nested_traps() {
+    let context = Context::create();
+    let input = ": main 🛡️ 🛡️ 🚨 \"inner\" 1 2";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
+    let exprs = parser.parse_module();
+    if let Expr::Define(name, params, body, _) = exprs[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    // Should have multiple trap sub-functions
+    assert!(ir.contains("trap_try_") && ir.contains("trap_fallback_"));
+}
+
+#[test]
+fn test_integration_json_filter() {
     let context = Context::create();
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    codegen.gen_shape("Data", &["val".to_string()]);
-    let input = ": inc x + ⚓ ^0 1\n: main L d N Data 10 ⟴ ⮞ ^0 \"val\" inc";
+    codegen.gen_shape("User", &["id".to_string(), "active".to_string()]);
+    let input = ": is_active id active ⚓ active\n: main L u 📦2 \"[]\" \"User\" ▽ ⮞ u is_active";
     let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
     let exprs = parser.parse_module();
     for expr in exprs {
@@ -473,6 +488,48 @@ fn test_positive_functional_iterators() {
         }
     }
     let ir = codegen.module.print_to_string().to_string();
-    assert!(ir.contains("map_loop:"));
-    assert!(ir.contains("call i64 @inc"));
+    assert!(ir.contains("call i64 @llm_unpack"));
+    assert!(ir.contains("filter_copy_loop"));
+    assert!(ir.contains("call i64 @is_active"));
 }
+
+#[test]
+fn test_integration_soa_map_math() {
+    let context = Context::create();
+    let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
+    codegen.gen_shape("Point", &["x".to_string()]);
+    // Map function doubling the value
+    let input = ": double x * ⚓ x 2\n: main L p N Point 5 ⟴ ⮞ p \"x\" double";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let exprs = parser.parse_module();
+    for expr in exprs {
+        match expr {
+            Expr::Define(n, p, b, _) => { codegen.gen_function(&n, p, &b); },
+            _ => {}
+        }
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("map_loop"));
+    assert!(ir.contains("call i64 @double"));
+}
+
+#[test]
+fn test_integration_complex_fault_tolerance() {
+    let context = Context::create();
+    // Recursive loop with nested traps and parallelism
+    let input = ": risky i ? = ⚓ i 3 🚨 \"fail\" ⚓ i\n: loop i ? < ⚓ i 5 L res 🛡️ @ risky ⚓ i 0 . 📤 1 ⧉ 🧵 ⮞ res \"\\n\" @ loop + ⚓ i 1 0\n: main @ loop 0";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
+    let exprs = parser.parse_module();
+    for expr in exprs {
+        match expr {
+            Expr::Define(n, p, b, _) => { codegen.gen_function(&n, p, &b); },
+            _ => {}
+        }
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("llm_try"));
+    assert!(ir.contains("call i64 @loop"));
+}
+
+
