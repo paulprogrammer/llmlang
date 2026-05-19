@@ -7,6 +7,7 @@ This project is a compiler for `llmlang`, a programming language optimized for L
 - **Backend:** LLVM (via `inkwell`)
 - **Philosophy:** Performance, Token Efficiency, and Structural Predictability.
 - **Design:** See [DESIGN.md](./DESIGN.md) for the full specification.
+- **Versioning:** No version bumps (Cargo.toml, README, tags) without explicit HITL approval.
 
 ## Workflow
 - **Parsing:** Use a hand-written recursive descent parser or `pest` for the prefix-arity AST.
