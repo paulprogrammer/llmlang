@@ -50,6 +50,7 @@ pub enum Expr {
     TimeOp(Token, Box<Expr>, Box<Expr>),    // 🕒+ T seconds
     TimeZone,                               // 🕒🌍
     Panic(Box<Expr>),                       // 🚨 message
+    Trap(Box<Expr>, Box<Expr>),             // 🛡️ try fallback
 }
 
 impl Expr {
@@ -59,6 +60,7 @@ impl Expr {
             Expr::Cat(_, _) | Expr::Sub(_, _, _) | Expr::Read(_) | Expr::Str(_) | Expr::Split(_, _, _) | Expr::Pack(_) | Expr::Env(_) | Expr::MoneyStr(_) | Expr::TimeZone => true,
             Expr::Let(_, _, body) | Expr::Seq(_, body) => body.returns_ptr(),
             Expr::Move(e) | Expr::Borrow(e) | Expr::MutBorrow(e) => e.returns_ptr(),
+            Expr::Trap(t, f) => t.returns_ptr() || f.returns_ptr(),
             _ => false,
         }
     }
@@ -75,7 +77,7 @@ impl Expr {
             Expr::Let(_, v, b) => v.is_pure() && b.is_pure(),
             Expr::New(_, c) => c.is_pure(),
             Expr::Get(i, _, idx) => i.is_pure() && idx.is_pure(),
-            Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) | Expr::TimeNow | Expr::Env(_) | Expr::Panic(_) => false,
+            Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) | Expr::TimeNow | Expr::Env(_) | Expr::Panic(_) | Expr::Trap(_, _) => false,
             Expr::TimeGet(t, i) => t.is_pure() && i.is_pure(),
             Expr::TimeSet(y, m, d, h, mn, s) => y.is_pure() && m.is_pure() && d.is_pure() && h.is_pure() && mn.is_pure() && s.is_pure(),
             Expr::Pack(e) => e.is_pure(),
@@ -121,6 +123,7 @@ impl Expr {
             Expr::TimeOp(_, l, r) => 5 + l.complexity() + r.complexity(),
             Expr::TimeZone => 5,
             Expr::Panic(e) => 10 + e.complexity(),
+            Expr::Trap(t, f) => 20 + t.complexity() + f.complexity(),
             Expr::Import(_, _) | Expr::Shape(_, _, _) => 1,
         }
     }
@@ -149,6 +152,7 @@ impl Expr {
             Expr::Move(expr) | Expr::Borrow(expr) | Expr::MutBorrow(expr) | Expr::Len(expr) | Expr::Str(expr) | Expr::Read(expr) | Expr::Env(expr) | Expr::Pack(expr) | Expr::Unpack(expr, _) | Expr::MoneyStr(expr) | Expr::Panic(expr) => {
                 expr.collect_calls(calls);
             }
+            Expr::Trap(t, f) => { t.collect_calls(calls); f.collect_calls(calls); }
             Expr::Map(e, _, f) => { e.collect_calls(calls); f.collect_calls(calls); }
             Expr::Filter(e, f) => { e.collect_calls(calls); f.collect_calls(calls); }
             Expr::Define(_, _, body, _) => {
@@ -278,6 +282,7 @@ impl Expr {
             Expr::MoneyStr(e) => { s.push_str("💰🧵"); e.collect_fingerprint(s); }
             Expr::TimeOp(tok, l, r) => { s.push_str(&format!("🕒{:?}", tok)); l.collect_fingerprint(s); r.collect_fingerprint(s); }
             Expr::Panic(e) => { s.push_str("🚨"); e.collect_fingerprint(s); }
+            Expr::Trap(t, f) => { s.push_str("🛡️"); t.collect_fingerprint(s); f.collect_fingerprint(s); }
         }
     }
 }

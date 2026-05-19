@@ -1,0 +1,16 @@
+: risky i
+    ? = ⚓ i 3
+        . 🚨 "Failure at 3" ⚓ i
+        ⚓ i
+
+: loop i
+    ? < ⚓ i 5
+        L res 🛡️
+            @ risky ⚓ i
+            0
+          . 📤 1 ⧉ "Value: " ⧉ 🧵 ⮞ res "\n"
+            @ loop + ⚓ i 1
+        0
+
+: main
+    @ loop 0

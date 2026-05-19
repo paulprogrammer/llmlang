@@ -42,6 +42,7 @@
   * `📅` : Time Get. `📅 T index` (0=Y, 1=M, 2=D, 3=H, 4=m, 5=S).
   * `📆` : Time Set. `📆 Y M D H m S` -> TAI64 label.
   * `🌍` : Environment. `🌍 key` (Returns string).
+  * `🛡️` : Trap (Recover). `🛡️ try fallback` (Caught panics run fallback).
   * `.` : Sequence. `. expr1 expr2` (Returns expr2).
   * `"` : String Literal. `"text"`
 

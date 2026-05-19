@@ -41,6 +41,7 @@ pub enum Token {
     Filter,    // ▽
     Money,     // 💰
     Panic,     // 🚨
+    Trap,      // 🛡️
     TimeNow,   // 🕒
     TimeGet,   // 📅
     TimeSet,   // 📆
@@ -116,6 +117,7 @@ impl Lexer {
             '\u{25BD}' => Token::Filter,
             '\u{1F4B0}' => Token::Money,
             '\u{1F6A8}' => Token::Panic,
+            '\u{1F6E1}' => Token::Trap,
             '\u{1F552}' => Token::TimeNow,
             '\u{1F4C5}' => Token::TimeGet,
             '\u{1F4C6}' => Token::TimeSet,
@@ -123,6 +125,7 @@ impl Lexer {
             '"' => self.lex_string(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
+            '\u{FE0F}' => self.next_token(),
             _ => panic!("Unexpected character: {}", ch),
         }
     }

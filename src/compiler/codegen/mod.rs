@@ -143,6 +143,34 @@ impl<'ctx> CodeGen<'ctx> {
         self.get_call_res(call)
     }
 
+    fn gen_trap_sub_fn(&self, expr: &Expr, stack: &mut Vec<StackItem<'ctx>>, expand_map: &HashMap<String, usize>, captures: &[(usize, BasicValueEnum<'ctx>, Option<String>, bool)], name: &str) -> FunctionValue<'ctx> {
+        let i64_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
+        let task_fn_type = self.context.i64_type().fn_type(&[i64_ptr.into()], false);
+        let task_fn = self.module.add_function(name, task_fn_type, None);
+        let entry = self.context.append_basic_block(task_fn, "entry");
+        
+        let current_bb = self.builder.get_insert_block().unwrap();
+        self.builder.position_at_end(entry);
+
+        let env_ptr = task_fn.get_nth_param(0).unwrap().into_pointer_value();
+        let mut task_stack = Vec::new();
+        for (i, (_orig_idx, _val, shape, is_ptr)) in captures.iter().enumerate() {
+            let member_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), env_ptr, &[self.context.i64_type().const_int(i as u64, false)], "cap").unwrap() };
+            let loaded = self.builder.build_load(self.context.i64_type(), member_ptr, "val").unwrap();
+            task_stack.push(StackItem { value: loaded, state: VariableState::Borrowed, shape: shape.clone(), is_ptr: *is_ptr });
+        }
+
+        let res = self.gen_expr(expr, &mut task_stack, expand_map);
+        for item in task_stack {
+            if item.state == VariableState::Available {
+                self.emit_auto_drop(item.value, item.shape.as_deref(), item.is_ptr);
+            }
+        }
+        self.builder.build_return(Some(&res)).unwrap();
+        self.builder.position_at_end(current_bb);
+        task_fn
+    }
+
     fn infer_shape(&self, expr: &Expr, stack: &[StackItem<'ctx>]) -> Option<String> {
         match expr {
             Expr::New(name, _) => Some(name.clone()),
@@ -805,6 +833,38 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_call(func, &[msg.into()], "").unwrap();
                 self.context.i64_type().const_int(0, false).into()
             }
+            Expr::Trap(try_expr, fallback_expr) => {
+                let mut captures = Vec::new();
+                for (i, item) in stack.iter().enumerate() {
+                    if item.state == VariableState::Available || item.state == VariableState::Borrowed {
+                        captures.push((i, item.value, item.shape.clone(), item.is_ptr));
+                    }
+                }
+
+                let trap_id = self.module.get_functions().count();
+                let try_name = format!("trap_try_{}", trap_id);
+                let fallback_name = format!("trap_fallback_{}", trap_id);
+
+                let try_fn = self.gen_trap_sub_fn(try_expr, stack, expand_map, &captures, &try_name);
+                let fallback_fn = self.gen_trap_sub_fn(fallback_expr, stack, expand_map, &captures, &fallback_name);
+
+                let env_alloc = self.builder.build_array_alloca(self.context.i64_type(), self.context.i64_type().const_int(captures.len() as u64, false), "env").unwrap();
+                for (i, (_orig_idx, val, _shape, _is_ptr)) in captures.iter().enumerate() {
+                    let member_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), env_alloc, &[self.context.i64_type().const_int(i as u64, false)], "cap_store").unwrap() };
+                    self.builder.build_store(member_ptr, *val).unwrap();
+                }
+
+                let i64_type = self.context.i64_type();
+                let try_fn_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into(), i64_type.into()], false);
+                let try_func = self.get_or_add_external_fn("llm_try", try_fn_type);
+                
+                let try_fn_int = self.builder.build_ptr_to_int(try_fn.as_global_value().as_pointer_value(), i64_type, "try_ptr").unwrap();
+                let fallback_fn_int = self.builder.build_ptr_to_int(fallback_fn.as_global_value().as_pointer_value(), i64_type, "fallback_ptr").unwrap();
+                let env_int = self.builder.build_ptr_to_int(env_alloc, i64_type, "env_ptr").unwrap();
+                
+                let call = self.builder.build_call(try_func, &[try_fn_int.into(), env_int.into(), fallback_fn_int.into(), env_int.into()], "try_res").unwrap();
+                self.get_call_res(call)
+            }
             Expr::Shape(_, _, _) | Expr::Import(_, _) | Expr::Define(_, _, _, _) => {
                 self.context.i64_type().const_int(0, false).into()
             }
@@ -837,10 +897,7 @@ impl<'ctx> CodeGen<'ctx> {
                 value: function.get_nth_param(i as u32).unwrap(),
                 state: VariableState::Available,
                 shape: None,
-                is_ptr: false, // Arguments are never pointers in my simplified model for now? 
-                // Actually, if it's a SoA or string arg, it should be marked.
-                // But Define doesn't know types.
-                // I'll assume they are NOT pointers for auto-drop safety unless we add type annotations.
+                is_ptr: false, 
             });
         }
         let ret_val = self.gen_expr(body, &mut stack, &HashMap::new());

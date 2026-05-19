@@ -51,8 +51,8 @@ impl Parser {
         tok
     }
 
-    pub fn parse_expr(&mut self) -> Expr {
-        match &self.current_token {
+    fn parse_expr(&mut self) -> Expr {
+        let res = match &self.current_token {
             Token::Integer(i) => {
                 let val = *i;
                 self.consume();
@@ -293,6 +293,12 @@ impl Parser {
                 self.consume();
                 Expr::Panic(Box::new(self.parse_expr()))
             }
+            Token::Trap => {
+                self.consume();
+                let try_expr = self.parse_expr();
+                let fallback_expr = self.parse_expr();
+                Expr::Trap(Box::new(try_expr), Box::new(fallback_expr))
+            }
             Token::TimeNow => {
                 self.consume();
                 if let Token::Add | Token::Sub = self.current_token {
@@ -342,7 +348,8 @@ impl Parser {
                 Expr::BinaryOp(op, Box::new(left), Box::new(right))
             }
             _ => self.report_error("E001"),
-        }
+        };
+        res
     }
 
     pub fn parse_module(&mut self) -> Vec<Expr> {

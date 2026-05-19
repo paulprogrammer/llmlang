@@ -84,7 +84,8 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
 | **Money** | `💰+`, `💰-`, `💰*`, `💰/` | Fixed-point precision math. |
 | **MoneyStr**| `💰🧵 money` | Format money value to string. |
 | **Panic** | `🚨 message` | Abort execution with error message. |
-| **Time** | `🕒`, `📅`, `📆` | TAI64 and Calendar primitives. |
+| **Trap**  | `🛡️ try fall` | Catch panic and run fallback. |
+| **Time**  | `🕒`, `📅`, `📆` | TAI64 and Calendar primitives. |
 | **TimeZone**| `🕒🌍` | Get local timezone name. |
 | **Env** | `🌍 key` | Access system environment variables. |
 | **Sequence** | `. e1 e2` | Evaluate e1 then e2, returning e2. |
