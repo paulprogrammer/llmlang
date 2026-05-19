@@ -26,6 +26,34 @@ fn test_positive_div() {
     assert!(ir.contains("sdiv i64 10, 2") || ir.contains("ret i64 5"));
 }
 
+#[test]
+fn test_positive_comparisons() {
+    let context = Context::create();
+    let input = ": main x y < ^1 ^0";
+    let mut parser = Parser::new(Lexer::new(input));
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("icmp slt i64 %0, %1"));
+    assert!(ir.contains("zext i1 %lttmp to i64"));
+}
+
+#[test]
+fn test_positive_bitwise() {
+    let context = Context::create();
+    let input = ": main x y | & ^1 ^0 ^ ^1 ^0";
+    let mut parser = Parser::new(Lexer::new(input));
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("and i64 %0, %1"));
+    assert!(ir.contains("xor i64 %0, %1"));
+    assert!(ir.contains("or i64 %andtmp, %xortmp"));
+}
 
 #[test]
 fn test_positive_debruijn() {
@@ -58,7 +86,7 @@ fn test_positive_soa_shape() {
 #[test]
 fn test_positive_move_borrow() {
     let context = Context::create();
-    let input = ": test x + & ^0 > ^0"; 
+    let input = ": test x + ⚓ ^0 ⮞ ^0"; 
     let ast = Parser::new(Lexer::new(input)).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = ast {
@@ -70,7 +98,7 @@ fn test_positive_move_borrow() {
 #[test]
 fn test_negative_double_move() {
     let context = Context::create();
-    let input = ": test x + > ^0 > ^0";
+    let input = ": test x + ⮞ ^0 ⮞ ^0";
     let ast = Parser::new(Lexer::new(input)).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = ast {
@@ -85,7 +113,7 @@ fn test_negative_double_move() {
 #[test]
 fn test_positive_let() {
     let context = Context::create();
-    let input = ": test x L y + ^0 1 > ^0"; // n is at ^1 now
+    let input = ": test x L y + ^0 1 ⮞ ^0"; // n is at ^1 now
     let ast = Parser::new(Lexer::new(input)).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = ast {
@@ -98,7 +126,7 @@ fn test_positive_let() {
 #[test]
 fn test_positive_recursion() {
     let context = Context::create();
-    let input = ": fact n ? ^0 * & ^0 @ fact - > ^0 1 > ^0";
+    let input = ": fact n ? ^0 * ⚓ ^0 @ fact - ⮞ ^0 1 ⮞ ^0";
     let ast = Parser::new(Lexer::new(input)).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = ast {
@@ -146,9 +174,9 @@ fn test_positive_export_sig() {
 
 #[test]
 fn test_positive_fingerprint() {
-    let input1 = ": f1 x + > ^0 1";
-    let input2 = ": f2 y + > ^0 1";
-    let input3 = ": f3 x * > ^0 2";
+    let input1 = ": f1 x + ⮞ ^0 1";
+    let input2 = ": f2 y + ⮞ ^0 1";
+    let input3 = ": f3 x * ⮞ ^0 2";
 
     let ast1 = Parser::new(Lexer::new(input1)).parse_expr();
     let ast2 = Parser::new(Lexer::new(input2)).parse_expr();
@@ -263,5 +291,3 @@ fn test_positive_fingerprint_arity() {
     assert!(fp1.contains("@1"));
     assert!(fp2.contains("@2"));
 }
-
-

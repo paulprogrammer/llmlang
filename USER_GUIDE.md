@@ -81,8 +81,8 @@ The LLM only needs to read `math_lib.llms` to understand how to call your librar
 | **Export** | `X ...` | Mark a definition for external consumption. |
 | **Apply** | `@<n> func args` | Call a function with `<n>` arguments (defaults to 1). |
 | **Branch** | `? cond t f` | Conditional branch (phi-merge). |
-| **Move** | `> ^index` | Consume a variable (Linear Ownership). |
-| **Borrow** | `& ^index` | Read a variable without consuming. |
+| **Move** | `⮞ ^index` | Consume a variable (Linear Ownership). |
+| **Borrow** | `⚓ ^index` | Read a variable without consuming. |
 | **De Bruijn** | `^0`, `^1` | Reference variables by scope depth. |
 | **Shape** | `# Name i64 ...` | Define a Struct of Arrays memory layout. |
 | **New** | `N Name count` | Allocate a new SoA instance. |
@@ -90,6 +90,8 @@ The LLM only needs to read `math_lib.llms` to understand how to call your librar
 | **Set** | `S instance f idx v`| Store value to SoA column. |
 | **Let** | `L name val body` | Create a local binding. |
 | **Import** | `I mod symbol` | Import external symbol. |
+| **Compare** | `=`, `<`, `>` | Compare two values (returns 0 or 1). |
+| **Bitwise** | `&`, `|`, `^` | Bitwise AND, OR, XOR. |
 
 ## 4. Understanding Diagnostics
 

@@ -105,8 +105,8 @@ impl Expr {
                     arg.collect_fingerprint(s);
                 }
             }
-            Expr::Move(e) => { s.push_str(">"); e.collect_fingerprint(s); }
-            Expr::Borrow(e) => { s.push_str("&"); e.collect_fingerprint(s); }
+            Expr::Move(e) => { s.push_str("⮞"); e.collect_fingerprint(s); }
+            Expr::Borrow(e) => { s.push_str("⚓"); e.collect_fingerprint(s); }
             Expr::MutBorrow(e) => { s.push_str("~"); e.collect_fingerprint(s); }
             Expr::Define(_, params, body, _) => {
                 s.push_str(":");
@@ -188,7 +188,9 @@ impl Parser {
                 self.consume();
                 Expr::Identifier(val)
             }
-            Token::Add | Token::Sub | Token::Mul | Token::Div => {
+            Token::Add | Token::Sub | Token::Mul | Token::Div |
+            Token::Eq | Token::Lt | Token::Gt | 
+            Token::BitAnd | Token::BitOr | Token::BitXor => {
                 let op = self.consume();
                 let left = self.parse_expr();
                 let right = self.parse_expr();

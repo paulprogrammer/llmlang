@@ -3,9 +3,11 @@
 
 ## 1. Syntax & Grammar
 * **Form:** Prefix-arity AST.
-* **Tokens:** Single-char ASCII preferred.
+* **Tokens:** Single-char ASCII and UTF-8 symbols.
 * **Operators:** 
   * `+`, `-`, `*`, `/` : Binary arithmetic.
+  * `=`, `<`, `>` : Comparison (Returns 0 or 1).
+  * `&`, `|`, `^` : Bitwise AND, OR, XOR.
   * `@` : Application. `@<n> func arg1...` (Optional `<n>` for explicit arity).
   * `?` : Branching. `? cond true_expr false_expr`
   * `:` : Define. `: name arg1... body`
@@ -16,14 +18,14 @@
   * `N` : New (Alloc). `N Shape count`
   * `G` : Get (Load). `G inst field idx`
   * `S` : Set (Store). `S inst field idx val`
-  * `>` : Move (Consume). `> ^index`
-  * `&` : Borrow (Read). `& ^index`
+  * `⮞` : Move (Consume). `⮞ ^index`
+  * `⚓` : Borrow (Read). `⚓ ^index`
   * `^n`: De Bruijn Index. `^0` = nearest scope.
 
 ## 2. Memory & Ownership (LINEAR_TYPING)
 1. **Rule:** Every binding MUST be consumed exactly ONCE.
-2. **Move (`>`):** Transfers ownership. Target becomes `E004` (unavailable).
-3. **Borrow (`&`):** Concurrent read. Does not consume.
+2. **Move (`⮞`):** Transfers ownership. Target becomes `E004` (unavailable).
+3. **Borrow (`⚓`):** Concurrent read. Does not consume.
 4. **Leak (`W001`):** Binding defined but never moved.
 
 ## 3. Data Layout (SOA_ENFORCED)
@@ -48,7 +50,7 @@
 Ref: DIAGNOSTICS.md
 
 ## 6. Examples (Dense)
-- Add 1 to arg: `: add1 x + > ^0 1`
-- Factorial (Recursion): `: fact n ? ^0 * & ^0 @ fact - > ^0 1 > ^0`
-- Local Binding: `: calc x L y + > ^0 1 * & y & y`
+- Add 1 to arg: `: add1 x + ⮞ ^0 1`
+- Factorial (Recursion): `: fact n ? ^0 * ⚓ ^0 @ fact - ⮞ ^0 1 ⮞ ^0`
+- Local Binding: `: calc x L y + ⮞ ^0 1 * ⚓ y ⚓ y`
 - Library Import: `I math sin : test x @ sin ^0`

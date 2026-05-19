@@ -86,6 +86,21 @@ impl<'ctx> CodeGen<'ctx> {
                     Token::Sub => self.builder.build_int_sub(lhs, rhs, "subtmp").unwrap().into(),
                     Token::Mul => self.builder.build_int_mul(lhs, rhs, "multmp").unwrap().into(),
                     Token::Div => self.builder.build_int_signed_div(lhs, rhs, "divtmp").unwrap().into(),
+                    Token::Eq => {
+                        let cmp = self.builder.build_int_compare(inkwell::IntPredicate::EQ, lhs, rhs, "eqtmp").unwrap();
+                        self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zexttmp").unwrap().into()
+                    }
+                    Token::Lt => {
+                        let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, lhs, rhs, "lttmp").unwrap();
+                        self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zexttmp").unwrap().into()
+                    }
+                    Token::Gt => {
+                        let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SGT, lhs, rhs, "gttmp").unwrap();
+                        self.builder.build_int_z_extend(cmp, self.context.i64_type(), "zexttmp").unwrap().into()
+                    }
+                    Token::BitAnd => self.builder.build_and(lhs, rhs, "andtmp").unwrap().into(),
+                    Token::BitOr => self.builder.build_or(lhs, rhs, "ortmp").unwrap().into(),
+                    Token::BitXor => self.builder.build_xor(lhs, rhs, "xortmp").unwrap().into(),
                     _ => panic!("E008"),
                 }
             }

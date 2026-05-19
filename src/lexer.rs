@@ -5,8 +5,8 @@ pub enum Token {
     Sub,       // -
     Mul,       // *
     Div,       // /
-    Move,      // >
-    Borrow,    // &
+    Move,      // ⮞
+    Borrow,    // ⚓
     MutBorrow, // ~
     Define,    // :
     Shape,     // #
@@ -19,6 +19,12 @@ pub enum Token {
     Export,    // X
     Let,       // L
     Import,    // I
+    Eq,        // =
+    Lt,        // <
+    Gt,        // >
+    BitAnd,    // &
+    BitOr,     // |
+    BitXor,    // ^
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -54,9 +60,14 @@ impl Lexer {
             '-' => Token::Sub,
             '*' => Token::Mul,
             '/' => self.lex_slash(),
-            '>' => Token::Move,
-            '&' => Token::Borrow,
+            '⮞' => Token::Move,
+            '⚓' => Token::Borrow,
             '~' => Token::MutBorrow,
+            '=' => Token::Eq,
+            '<' => Token::Lt,
+            '>' => Token::Gt,
+            '&' => Token::BitAnd,
+            '|' => Token::BitOr,
             ':' => Token::Define,
             '#' => Token::Shape,
             '?' => Token::Question,
@@ -67,7 +78,7 @@ impl Lexer {
             'X' => Token::Export,
             'L' => Token::Let,
             'I' => Token::Import,
-            '^' => self.lex_debruijn(),
+            '^' => self.lex_xor_or_debruijn(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
             _ => panic!("Unexpected character: {}", ch),
@@ -117,13 +128,17 @@ impl Lexer {
         Token::Identifier(id_str)
     }
 
-    fn lex_debruijn(&mut self) -> Token {
-        let mut num_str = String::new();
-        while self.pos < self.input.len() && self.input[self.pos].is_digit(10) {
-            num_str.push(self.input[self.pos]);
-            self.pos += 1;
+    fn lex_xor_or_debruijn(&mut self) -> Token {
+        if self.pos < self.input.len() && self.input[self.pos].is_digit(10) {
+            let mut num_str = String::new();
+            while self.pos < self.input.len() && self.input[self.pos].is_digit(10) {
+                num_str.push(self.input[self.pos]);
+                self.pos += 1;
+            }
+            Token::DeBruijn(num_str.parse().unwrap_or(0))
+        } else {
+            Token::BitXor
         }
-        Token::DeBruijn(num_str.parse().unwrap_or(0))
     }
 
     fn lex_slash(&mut self) -> Token {
