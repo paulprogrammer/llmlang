@@ -125,7 +125,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         let i64_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
         let task_fn_type = self.context.i64_type().fn_type(&[i64_ptr.into()], false);
-        let task_fn = self.module.add_function("parallel_task", task_fn_type, None);
+        let task_id = self.module.get_functions().count();
+        let task_name = format!("parallel_task_{}", task_id);
+        let task_fn = self.module.add_function(&task_name, task_fn_type, None);
         let entry = self.context.append_basic_block(task_fn, "entry");
         
         let current_bb = self.builder.get_insert_block().unwrap();
@@ -275,6 +277,9 @@ impl<'ctx> CodeGen<'ctx> {
                         if item.state == VariableState::Moved {
                             panic!("E005");
                         }
+                        if item.state == VariableState::Borrowed {
+                            panic!("E016");
+                        }
                         item.state = VariableState::Moved;
                         item.value
                     };
@@ -284,6 +289,9 @@ impl<'ctx> CodeGen<'ctx> {
                     let item = stack.get_mut(index).expect("E003");
                     if item.state == VariableState::Moved {
                         panic!("E005");
+                    }
+                    if item.state == VariableState::Borrowed {
+                        panic!("E016");
                     }
                     item.state = VariableState::Moved;
                     item.value

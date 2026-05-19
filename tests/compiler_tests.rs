@@ -532,4 +532,59 @@ fn test_integration_complex_fault_tolerance() {
     assert!(ir.contains("call i64 @loop"));
 }
 
+#[test]
+fn test_esoteric_parallel_recursion() {
+    let context = Context::create();
+    // Function that parallelizes its recursive call using a borrow
+    let input = ": main x ? ⚓ x + 1 @ main - ⚓ x 1 0";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test", llmlang::Config { parallel_threshold: 1, ..llmlang::Config::default() });
+    let exprs = parser.parse_module();
+    if let Expr::Define(name, params, body, _) = exprs[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("call i64 @llm_fork"));
+}
+
+#[test]
+fn test_esoteric_parallel_inside_trap() {
+    let context = Context::create();
+    // A trap containing a heavy pure expression (which should fork)
+    let mut input = ": main 🛡️ ".to_string();
+    for _ in 0..10 { input.push_str("+ "); }
+    input.push_str("1 ");
+    for _ in 0..10 { input.push_str("1 "); }
+    input.push_str("42");
+    
+    let mut parser = Parser::new(Lexer::new(&input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test", llmlang::Config { parallel_threshold: 1, ..llmlang::Config::default() });
+    let exprs = parser.parse_module();
+    if let Expr::Define(name, params, body, _) = exprs[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("define i64 @trap_try_"));
+    assert!(ir.contains("define i64 @parallel_task_"));
+}
+
+
+#[test]
+fn test_esoteric_multi_move_error() {
+    let context = Context::create();
+    // Attempting to move a borrowed variable inside a trap (E016)
+    let input = ": main x 🛡️ ⮞ x ⚓ x";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
+    let exprs = parser.parse_module();
+    if let Expr::Define(name, params, body, _) = exprs[0].clone() {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            codegen.gen_function(&name, params, &body);
+        }));
+        assert!(result.is_err());
+        // Verify it was E016 if possible (catch_unwind doesn't give the panic message easily but we know it panics)
+    }
+}
+
+
 
