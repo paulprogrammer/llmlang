@@ -3,6 +3,7 @@ pub mod compiler {
     pub mod ast;
     pub mod parser;
     pub mod codegen;
+    pub mod analysis;
 }
 
 use serde::{Deserialize, Serialize};
