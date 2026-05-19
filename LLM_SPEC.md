@@ -21,12 +21,22 @@
   * `⮞` : Move (Consume). `⮞ ^index`
   * `⚓` : Borrow (Read). `⚓ ^index`
   * `^n`: De Bruijn Index. `^0` = nearest scope.
+  * `ℓ` : Length (String). `ℓ str`
+  * `⧉` : Concat (String). `⧉ left right`
+  * `✂` : Substring. `✂ str start len`
+  * `🔍` : Location. `🔍 str pattern` (Returns index or -1)
+  * `≈` : Regex Match. `≈ str regex` (Returns 0 or 1)
+  * `"` : String Literal. `"text"`
+  * `📥` : Read. `📥 handle` (0=stdin)
+  * `📤` : Write. `📤 handle string` (1=stdout, 2=stderr)
+  * `🧵` : Stringify. `🧵 int`
+  * `🪓` : Split. `🪓 str delim idx`
 
-## 2. Memory & Ownership (LINEAR_TYPING)
-1. **Rule:** Every binding MUST be consumed exactly ONCE.
+## 2. Memory & Ownership (AFFINE_TYPING)
+1. **Rule:** Bindings can be consumed at most ONCE. If unconsumed when their scope ends, they are auto-dropped.
 2. **Move (`⮞`):** Transfers ownership. Target becomes `E004` (unavailable).
 3. **Borrow (`⚓`):** Concurrent read. Does not consume.
-4. **Leak (`W001`):** Binding defined but never moved.
+4. **Strings:** Managed as moved objects (pointers). Concatenation and substring operations allocate new memory which is auto-freed if not returned.
 
 ## 3. Data Layout (SOA_ENFORCED)
 * **Keyword:** `N`, `G`, `S`.
@@ -39,6 +49,7 @@
 ## 4. Execution & Entry Point
 * **Binary Target:** Requires a `: main` function definition.
 * **Compilation:** `.llm` -> `llmlang` -> `.o` -> `clang` -> binary.
+* **Runtime:** Linked with `rt.c` for string and system operations.
 
 ## 5. Diagnostic Codes
 * **E003:** OOB Index.
@@ -53,4 +64,6 @@ Ref: DIAGNOSTICS.md
 - Add 1 to arg: `: add1 x + ⮞ ^0 1`
 - Factorial (Recursion): `: fact n ? ^0 * ⚓ ^0 @ fact - ⮞ ^0 1 ⮞ ^0`
 - Local Binding: `: calc x L y + ⮞ ^0 1 * ⚓ y ⚓ y`
-- Library Import: `I math sin : test x @ sin ^0` (Ref: [llmlang-math](https://github.com/paulprogrammer/llmlang-math))
+- Library Import: `I math sin : test x @ sin ^0`
+- String Concat: `: greet n ⧉ "Hello, " ⮞ ^0`
+- Regex Check: `: is_digit s ≈ ⮞ ^0 "^[0-9]+$"`

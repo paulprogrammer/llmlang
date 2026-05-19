@@ -26,6 +26,16 @@ pub enum Expr {
     Expand(String),                         // ! name (reference to expand param)
     Let(String, Box<Expr>, Box<Expr>),      // L name val body
     Import(String, String),                 // I module_alias symbol_name
+    String(String),
+    Len(Box<Expr>),                         // ℓ expr
+    Cat(Box<Expr>, Box<Expr>),              // ⧉ left right
+    Sub(Box<Expr>, Box<Expr>, Box<Expr>),   // ✂ string start length
+    Loc(Box<Expr>, Box<Expr>),              // 🔍 string pattern
+    Reg(Box<Expr>, Box<Expr>),              // ≈ string regex
+    Read(Box<Expr>),                        // 📥 handle
+    Write(Box<Expr>, Box<Expr>),            // 📤 handle string
+    Str(Box<Expr>),                         // 🧵 int
+    Split(Box<Expr>, Box<Expr>, Box<Expr>), // 🪓 string delim index
 }
 
 impl Expr {
@@ -77,6 +87,15 @@ impl Expr {
                 idx.collect_calls(calls);
                 val.collect_calls(calls);
             }
+            Expr::Len(e) => e.collect_calls(calls),
+            Expr::Cat(l, r) => { l.collect_calls(calls); r.collect_calls(calls); }
+            Expr::Sub(s, b, l) => { s.collect_calls(calls); b.collect_calls(calls); l.collect_calls(calls); }
+            Expr::Loc(s, p) => { s.collect_calls(calls); p.collect_calls(calls); }
+            Expr::Reg(s, r) => { s.collect_calls(calls); r.collect_calls(calls); }
+            Expr::Read(h) => h.collect_calls(calls),
+            Expr::Write(h, s) => { h.collect_calls(calls); s.collect_calls(calls); }
+            Expr::Str(e) => e.collect_calls(calls),
+            Expr::Split(s, d, i) => { s.collect_calls(calls); d.collect_calls(calls); i.collect_calls(calls); }
             _ => {}
         }
     }
@@ -91,6 +110,7 @@ impl Expr {
         match self {
             Expr::Integer(_) => s.push_str("i"),
             Expr::Float(_) => s.push_str("f"),
+            Expr::String(_) => s.push_str("s"),
             Expr::DeBruijn(n) => s.push_str(&format!("^{}", n)),
             Expr::Identifier(_) => s.push_str("n"),
             Expr::BinaryOp(tok, left, right) => {
@@ -138,6 +158,15 @@ impl Expr {
                 t.collect_fingerprint(s);
                 f.collect_fingerprint(s);
             }
+            Expr::Len(e) => { s.push_str("ℓ"); e.collect_fingerprint(s); }
+            Expr::Cat(l, r) => { s.push_str("⧉"); l.collect_fingerprint(s); r.collect_fingerprint(s); }
+            Expr::Sub(str, b, l) => { s.push_str("✂"); str.collect_fingerprint(s); b.collect_fingerprint(s); l.collect_fingerprint(s); }
+            Expr::Loc(str, p) => { s.push_str("🔍"); str.collect_fingerprint(s); p.collect_fingerprint(s); }
+            Expr::Reg(str, r) => { s.push_str("≈"); str.collect_fingerprint(s); r.collect_fingerprint(s); }
+            Expr::Read(h) => { s.push_str("📥"); h.collect_fingerprint(s); }
+            Expr::Write(h, str) => { s.push_str("📤"); h.collect_fingerprint(s); str.collect_fingerprint(s); }
+            Expr::Str(e) => { s.push_str("🧵"); e.collect_fingerprint(s); }
+            Expr::Split(str, d, idx) => { s.push_str("🪓"); str.collect_fingerprint(s); d.collect_fingerprint(s); idx.collect_fingerprint(s); }
             Expr::Expand(_) => s.push_str("!"),
             Expr::Let(_, val, body) => {
                 s.push_str("L");
@@ -192,6 +221,61 @@ impl Parser {
                 let val = s.clone();
                 self.consume();
                 Expr::Identifier(val)
+            }
+            Token::String(s) => {
+                let val = s.clone();
+                self.consume();
+                Expr::String(val)
+            }
+            Token::Len => {
+                self.consume();
+                Expr::Len(Box::new(self.parse_expr()))
+            }
+            Token::Cat => {
+                self.consume();
+                let left = self.parse_expr();
+                let right = self.parse_expr();
+                Expr::Cat(Box::new(left), Box::new(right))
+            }
+            Token::StrSub => {
+                self.consume();
+                let s = self.parse_expr();
+                let start = self.parse_expr();
+                let len = self.parse_expr();
+                Expr::Sub(Box::new(s), Box::new(start), Box::new(len))
+            }
+            Token::Loc => {
+                self.consume();
+                let s = self.parse_expr();
+                let p = self.parse_expr();
+                Expr::Loc(Box::new(s), Box::new(p))
+            }
+            Token::Reg => {
+                self.consume();
+                let s = self.parse_expr();
+                let r = self.parse_expr();
+                Expr::Reg(Box::new(s), Box::new(r))
+            }
+            Token::Read => {
+                self.consume();
+                Expr::Read(Box::new(self.parse_expr()))
+            }
+            Token::Write => {
+                self.consume();
+                let h = self.parse_expr();
+                let s = self.parse_expr();
+                Expr::Write(Box::new(h), Box::new(s))
+            }
+            Token::Str => {
+                self.consume();
+                Expr::Str(Box::new(self.parse_expr()))
+            }
+            Token::Split => {
+                self.consume();
+                let s = self.parse_expr();
+                let d = self.parse_expr();
+                let i = self.parse_expr();
+                Expr::Split(Box::new(s), Box::new(d), Box::new(i))
             }
             Token::Add | Token::Sub | Token::Mul | Token::Div |
             Token::Eq | Token::Lt | Token::Gt | 

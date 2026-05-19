@@ -56,10 +56,34 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    fn get_or_add_external_fn(&self, name: &str, fn_type: inkwell::types::FunctionType<'ctx>) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function(name) {
+            f
+        } else {
+            self.module.add_function(name, fn_type, None)
+        }
+    }
+
+    fn gen_string_constant(&self, s: &str) -> BasicValueEnum<'ctx> {
+        let string_val = self.context.const_string(s.as_bytes(), true);
+        let global = self.module.add_global(string_val.get_type(), None, "str_const");
+        global.set_initializer(&string_val);
+        global.set_constant(true);
+        let ptr = global.as_pointer_value();
+        self.builder.build_ptr_to_int(ptr, self.context.i64_type(), "str_ptr").unwrap().into()
+    }
+
+    fn emit_auto_drop(&self, val: BasicValueEnum<'ctx>) {
+        let fn_type = self.context.void_type().fn_type(&[self.context.i64_type().into()], false);
+        let func = self.get_or_add_external_fn("llm_drop", fn_type);
+        self.builder.build_call(func, &[val.into()], "").unwrap();
+    }
+
     pub fn gen_expr(&self, expr: &Expr, stack: &mut Vec<StackItem<'ctx>>, expand_map: &HashMap<String, usize>) -> BasicValueEnum<'ctx> {
         match expr {
             Expr::Integer(i) => self.context.i64_type().const_int(*i as u64, false).into(),
             Expr::Float(f) => self.context.f64_type().const_float(*f).into(),
+            Expr::String(s) => self.gen_string_constant(s),
             Expr::Identifier(name) => {
                 if let Some(func) = self.module.get_function(name) {
                     func.as_global_value().as_pointer_value().into()
@@ -272,9 +296,80 @@ impl<'ctx> CodeGen<'ctx> {
                 let res = self.gen_expr(body_expr, stack, expand_map);
                 let item = stack.pop().unwrap();
                 if item.state == VariableState::Available {
-                    self.warnings.borrow_mut().push("W001".to_string());
+                    self.emit_auto_drop(item.value);
                 }
                 res
+            }
+            Expr::Len(e) => {
+                let s_val = self.gen_expr(e, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_len", fn_type);
+                let call = self.builder.build_call(func, &[s_val.into()], "len").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::Cat(l, r) => {
+                let l_val = self.gen_expr(l, stack, expand_map);
+                let r_val = self.gen_expr(r, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_cat", fn_type);
+                let call = self.builder.build_call(func, &[l_val.into(), r_val.into()], "cat").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::Sub(s, b, l) => {
+                let s_val = self.gen_expr(s, stack, expand_map);
+                let b_val = self.gen_expr(b, stack, expand_map);
+                let l_val = self.gen_expr(l, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into(), self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_sub", fn_type);
+                let call = self.builder.build_call(func, &[s_val.into(), b_val.into(), l_val.into()], "sub").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::Loc(s, p) => {
+                let s_val = self.gen_expr(s, stack, expand_map);
+                let p_val = self.gen_expr(p, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_loc", fn_type);
+                let call = self.builder.build_call(func, &[s_val.into(), p_val.into()], "loc").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::Reg(s, r) => {
+                let s_val = self.gen_expr(s, stack, expand_map);
+                let r_val = self.gen_expr(r, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_reg", fn_type);
+                let call = self.builder.build_call(func, &[s_val.into(), r_val.into()], "reg").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::Read(h) => {
+                let h_val = self.gen_expr(h, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_read", fn_type);
+                let call = self.builder.build_call(func, &[h_val.into()], "read").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::Write(h, s) => {
+                let h_val = self.gen_expr(h, stack, expand_map);
+                let s_val = self.gen_expr(s, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_write", fn_type);
+                let call = self.builder.build_call(func, &[h_val.into(), s_val.into()], "write").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::Str(e) => {
+                let val = self.gen_expr(e, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_itoa", fn_type);
+                let call = self.builder.build_call(func, &[val.into()], "itoa").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
+            }
+            Expr::Split(s, d, i) => {
+                let s_val = self.gen_expr(s, stack, expand_map);
+                let d_val = self.gen_expr(d, stack, expand_map);
+                let i_val = self.gen_expr(i, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into(), self.context.i64_type().into()], false);
+                let func = self.get_or_add_external_fn("llm_split", fn_type);
+                let call = self.builder.build_call(func, &[s_val.into(), d_val.into(), i_val.into()], "split").unwrap();
+                call.try_as_basic_value().basic().expect("E011")
             }
             _ => panic!("E001"),
         }
@@ -311,7 +406,7 @@ impl<'ctx> CodeGen<'ctx> {
         let ret_val = self.gen_expr(body, &mut stack, &HashMap::new());
         for item in stack.iter() {
             if item.state == VariableState::Available {
-                self.warnings.borrow_mut().push("W001".to_string());
+                self.emit_auto_drop(item.value);
             }
         }
         self.builder.build_return(Some(&ret_val)).unwrap();

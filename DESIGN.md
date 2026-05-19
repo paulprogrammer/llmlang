@@ -19,6 +19,7 @@
 * **Rust-style Borrowing:** 
   * Explicit markers for read-only borrowing and mutable borrowing.
   * No hidden global state; all required state transitions are explicitly passed through the AST nodes.
+* **Strings as Objects:** String literals and dynamic string results are treated as movable objects. Concatenation and other operations allocate from the heap via a small runtime (`rt.c`).
 
 ## 4. Module & Scope Structure (Manifest-Driven)
 * **Deterministic Isolation:** Similar to `pnpm-lock.yaml`, each module has a strict metadata manifest that maps local, short aliases to exact cryptographic hashes or versions of dependencies.
@@ -33,6 +34,7 @@
 ## 6. Primitive Operations Syntax
 * **Composite Approach:** The language uses a hybrid syntax to balance extreme token efficiency with LLM pre-training alignment.
 * **ASCII & UTF-8 Symbols for Core Logic:** Base operators (math, borrow, move, apply, branch) are represented by single-character ASCII or UTF-8 tokens (e.g., `+`, `⮞`, `⚓`, `@`, `?`). The apply operator supports an optional numeric suffix for explicit arity (e.g., `@2`) to handle bracketless prefix notation. This guarantees 1 token per operation.
+* **String Operations:** Native string support using UTF-8 symbols for length (`ℓ`), concatenation (`⧉`), substring (`✂`), location (`🔍`), and regex match (`≈`).
 * **Conditional Branching (`?`):** Implements `? cond true_branch false_branch`. Enforces linear stack consistency (both branches must leave the stack in the identical ownership state).
 * **Short Mnemonics for Built-ins:** Standard library functions and common structural built-ins use 3-to-4 letter ASCII mnemonics (e.g., `len`, `map`, `sys`, `new`, `get`, `set`).
 
@@ -44,6 +46,7 @@
 ## 8. Implementation Details
 * **Implementation Language:** Rust (for memory safety, performance, and conceptual symmetry with the language's ownership model).
 * **Compiler Backend:** LLVM via the `inkwell` crate.
+* **Runtime Support:** A minimal C runtime (`src/rt.c`) provides heap-allocated string operations and POSIX regex support.
 * **Target Platforms:** Native Machine Code (x86_64, ARM) and WebAssembly (Wasm).
 * **Computational Power:** Turing Complete (achieved via conditional branching and recursive function calls).
 * **Parsing Strategy:** Hand-written Recursive Descent or PEG-based (using `pest`) to maintain absolute control over the dense, prefix-arity AST.

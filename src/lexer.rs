@@ -25,6 +25,16 @@ pub enum Token {
     BitAnd,    // &
     BitOr,     // |
     BitXor,    // ^
+    String(String),
+    Len,       // ℓ
+    Cat,       // ⧉
+    StrSub,    // ✂
+    Loc,       // 🔍
+    Reg,       // ≈
+    Read,      // 📥
+    Write,     // 📤
+    Str,       // 🧵
+    Split,     // 🪓
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -81,6 +91,16 @@ impl Lexer {
             'L' => Token::Let,
             'I' => Token::Import,
             '^' => self.lex_xor_or_debruijn(),
+            'ℓ' => Token::Len,
+            '⧉' => Token::Cat,
+            '✂' => Token::Sub,
+            '🔍' => Token::Loc,
+            '≈' => Token::Reg,
+            '📥' => Token::Read,
+            '📤' => Token::Write,
+            '🧵' => Token::Str,
+            '🪓' => Token::Split,
+            '"' => self.lex_string(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
             _ => panic!("Unexpected character: {}", ch),
@@ -144,6 +164,33 @@ impl Lexer {
         } else {
             Token::BitXor
         }
+    }
+
+    fn lex_string(&mut self) -> Token {
+        let mut s = String::new();
+        while self.pos < self.input.len() && self.input[self.pos] != '"' {
+            if self.input[self.pos] == '\\' {
+                self.pos += 1;
+                if self.pos < self.input.len() {
+                    match self.input[self.pos] {
+                        'n' => s.push('\n'),
+                        't' => s.push('\t'),
+                        'r' => s.push('\r'),
+                        '\\' => s.push('\\'),
+                        '"' => s.push('"'),
+                        _ => s.push(self.input[self.pos]),
+                    }
+                    self.pos += 1;
+                }
+            } else {
+                s.push(self.input[self.pos]);
+                self.pos += 1;
+            }
+        }
+        if self.pos < self.input.len() {
+            self.pos += 1; // consume "
+        }
+        Token::String(s)
     }
 
     fn lex_slash(&mut self) -> Token {

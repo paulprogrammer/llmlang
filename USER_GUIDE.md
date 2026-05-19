@@ -95,6 +95,15 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
 | **Import** | `I mod symbol` | Import external symbol. |
 | **Compare** | `=`, `<`, `>` | Compare two values (returns 0 or 1). |
 | **Bitwise** | `&`, `|`, `^` | Bitwise AND, OR, XOR. |
+| **String** | `"text"` | String literal. |
+| **Len** | `ℓ str` | Get string length. |
+| **Concat** | `⧉ s1 s2` | Concatenate two strings. |
+| **Sub** | `✂ s start len` | Extract substring. |
+| **Loc** | `🔍 s pat` | Find index of pattern in string. |
+| **Regex** | `≈ s regex` | Match string against regex. |
+| **System** | `📥 h`, `📤 h s` | Read/Write to/from file handles. |
+| **Stringify**| `🧵 i64` | Convert integer to string. |
+| **Split** | `🪓 s d idx` | Extract segment by delimiter. |
 
 ## 4. Understanding Diagnostics
 

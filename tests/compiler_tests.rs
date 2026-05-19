@@ -291,3 +291,79 @@ fn test_positive_fingerprint_arity() {
     assert!(fp1.contains("@1"));
     assert!(fp2.contains("@2"));
 }
+
+#[test]
+fn test_positive_string_literals() {
+    let context = Context::create();
+    let input = "\"hello world\"";
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
+    let codegen = CodeGen::new(&context, "test");
+    codegen.gen_function("main", vec![], &ast);
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("str_const"));
+}
+
+#[test]
+fn test_positive_string_ops() {
+    let context = Context::create();
+    // ℓ "abc"
+    // ⧉ "a" "b"
+    let input = ": main ⧉ \"a\" \"b\"";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("call i64 @llm_cat"));
+}
+
+#[test]
+fn test_positive_regex() {
+    let context = Context::create();
+    // ≈ "hello" "h.*o"
+    let input = ": main ≈ \"hello\" \"h.*o\"";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("call i64 @llm_reg"));
+}
+
+#[test]
+fn test_positive_system_ops() {
+    let context = Context::create();
+    // 📥 0
+    // 📤 1 "hi"
+    // 🧵 123
+    let input = ": main L s 📥 0 L _ 📤 1 🧵 ℓ ⚓ ^0 ⮞ ^1";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("call i64 @llm_read"));
+    assert!(ir.contains("call i64 @llm_write"));
+    assert!(ir.contains("call i64 @llm_itoa"));
+    // autodrop should be inserted for the unused variable `_`
+    assert!(ir.contains("call void @llm_drop"));
+}
+
+#[test]
+fn test_positive_split_op() {
+    let context = Context::create();
+    // 🪓 "a,b,c" "," 1
+    let input = ": main 🪓 \"a,b,c\" \",\" 1";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test");
+    if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
+        codegen.gen_function(&name, params, &body);
+    }
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("call i64 @llm_split"));
+}
+
+
