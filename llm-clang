@@ -2,11 +2,19 @@
 # llm-clang - A wrapper to integrate llmlang with clang
 
 # Path to the llmlang compiler
-# In a real install, this would be in /usr/local/bin or similar.
-LLMLANG_BIN="$(dirname "$0")/target/release/llmlang"
+if command -v llmlang >/dev/null 2>&1; then
+    LLMLANG_BIN="llmlang"
+else
+    LLMLANG_BIN="$(dirname "$0")/target/release/llmlang"
+    
+    if [ ! -f "$LLMLANG_BIN" ]; then
+        # Fallback to debug if release isn't built
+        LLMLANG_BIN="$(dirname "$0")/target/debug/llmlang"
+    fi
+fi
 
-if [ ! -f "$LLMLANG_BIN" ]; then
-    echo "Error: llmlang binary not found at $LLMLANG_BIN"
+if ! command -v "$LLMLANG_BIN" >/dev/null 2>&1 && [ ! -f "$LLMLANG_BIN" ]; then
+    echo "Error: llmlang binary not found in PATH or at repo build locations."
     exit 1
 fi
 
