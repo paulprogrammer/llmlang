@@ -38,8 +38,16 @@ for arg in "${args[@]}"; do
     fi
 done
 
+# Path to the runtime
+RT_SRC="$(dirname "$0")/src/rt.c"
+RT_OBJ="$(dirname "$0")/target/rt.o"
+mkdir -p "$(dirname "$RT_OBJ")"
+
+# Ensure runtime is compiled
+clang -c "$RT_SRC" -o "$RT_OBJ"
+
 # Call clang to link the object files
-clang "${processed_args[@]}"
+clang "${processed_args[@]}" "$RT_OBJ"
 LINK_RET=$?
 
 # If the user didn't specify -c, we might want to cleanup .o files?
