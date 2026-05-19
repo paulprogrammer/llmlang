@@ -34,6 +34,7 @@ pub enum Token {
 pub struct Lexer {
     input: Vec<char>,
     pos: usize,
+    pub line: usize,
 }
 
 impl Lexer {
@@ -41,6 +42,7 @@ impl Lexer {
         Self {
             input: input.chars().collect(),
             pos: 0,
+            line: 1,
         }
     }
 
@@ -101,6 +103,9 @@ impl Lexer {
 
     fn skip_whitespace(&mut self) {
         while self.pos < self.input.len() && self.input[self.pos].is_whitespace() {
+            if self.input[self.pos] == '\n' {
+                self.line += 1;
+            }
             self.pos += 1;
         }
     }
@@ -148,6 +153,7 @@ impl Lexer {
             }
             if self.pos < self.input.len() && self.input[self.pos] == '\n' {
                 self.pos += 1;
+                self.line += 1;
             }
             self.next_token()
         } else {

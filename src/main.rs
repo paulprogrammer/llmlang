@@ -93,7 +93,7 @@ fn main() {
     let codegen = CodeGen::new(&context, input_path);
 
     let lexer = Lexer::new(&input);
-    let mut parser = Parser::new(lexer);
+    let mut parser = Parser::new(lexer, input_path.to_string());
     
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let expressions = parser.parse_module();

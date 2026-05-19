@@ -57,7 +57,7 @@ impl LLMLangMCPHandler {
                         continue;
                     }
                 };
-                let mut parser = Parser::new(Lexer::new(&content));
+                let mut parser = Parser::new(Lexer::new(&content), entry.path().display().to_string());
                 let expressions = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     parser.parse_module()
                 })) {

@@ -8,7 +8,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 fn test_positive_math() {
     let context = Context::create();
     let input = "+ 1 2";
-    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     codegen.gen_function("main", vec![], &ast);
     let ir = codegen.module.print_to_string().to_string();
@@ -19,7 +19,7 @@ fn test_positive_math() {
 fn test_positive_div() {
     let context = Context::create();
     let input = "/ 10 2";
-    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     codegen.gen_function("main", vec![], &ast);
     let ir = codegen.module.print_to_string().to_string();
@@ -30,7 +30,7 @@ fn test_positive_div() {
 fn test_positive_comparisons() {
     let context = Context::create();
     let input = ": main x y < ^1 ^0";
-    let mut parser = Parser::new(Lexer::new(input));
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
         codegen.gen_function(&name, params, &body);
@@ -44,7 +44,7 @@ fn test_positive_comparisons() {
 fn test_positive_bitwise() {
     let context = Context::create();
     let input = ": main x y | & ^1 ^0 ^ ^1 ^0";
-    let mut parser = Parser::new(Lexer::new(input));
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = parser.parse_module()[0].clone() {
         codegen.gen_function(&name, params, &body);
@@ -59,7 +59,7 @@ fn test_positive_bitwise() {
 fn test_positive_debruijn() {
     let context = Context::create();
     let input = ": add_one x + ^0 1";
-    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = ast {
         codegen.gen_function(&name, params, &body);
@@ -87,7 +87,7 @@ fn test_positive_soa_shape() {
 fn test_positive_move_borrow() {
     let context = Context::create();
     let input = ": test x + ⚓ ^0 ⮞ ^0"; 
-    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = ast {
         codegen.gen_function(&name, params, &body);
@@ -99,7 +99,7 @@ fn test_positive_move_borrow() {
 fn test_negative_double_move() {
     let context = Context::create();
     let input = ": test x + ⮞ ^0 ⮞ ^0";
-    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = ast {
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -114,7 +114,7 @@ fn test_negative_double_move() {
 fn test_positive_let() {
     let context = Context::create();
     let input = ": test x L y + ^0 1 ⮞ ^0"; // n is at ^1 now
-    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = ast {
         codegen.gen_function(&name, params, &body);
@@ -127,7 +127,7 @@ fn test_positive_let() {
 fn test_positive_recursion() {
     let context = Context::create();
     let input = ": fact n ? ^0 * ⚓ ^0 @ fact - ⮞ ^0 1 ⮞ ^0";
-    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     if let Expr::Define(name, params, body, _) = ast {
         codegen.gen_function(&name, params, &body);
@@ -140,14 +140,14 @@ fn test_positive_recursion() {
 fn test_positive_expansion() {
     let context = Context::create();
     let input = ": poly !obj G !obj x 0";
-    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
     let codegen = CodeGen::new(&context, "test");
     codegen.gen_shape("Point", &["x".to_string()]);
     if let Expr::Define(name, params, body, _) = ast {
         codegen.gen_function(&name, params, &body);
     }
     let call_input = "@ poly N Point 1";
-    let call_ast = Parser::new(Lexer::new(call_input)).parse_expr();
+    let call_ast = Parser::new(Lexer::new(call_input), "test.llm".to_string()).parse_expr();
     codegen.gen_function("wrapper", vec![], &call_ast);
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("alloca i64"));
@@ -157,7 +157,7 @@ fn test_positive_expansion() {
 fn test_positive_export_sig() {
     let context = Context::create();
     let input = "X # Point x y\nX : add_x !obj G !obj x 0";
-    let mut parser = Parser::new(Lexer::new(input));
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test");
     let exprs = parser.parse_module();
     for expr in exprs {
@@ -178,9 +178,9 @@ fn test_positive_fingerprint() {
     let input2 = ": f2 y + ⮞ ^0 1";
     let input3 = ": f3 x * ⮞ ^0 2";
 
-    let ast1 = Parser::new(Lexer::new(input1)).parse_expr();
-    let ast2 = Parser::new(Lexer::new(input2)).parse_expr();
-    let ast3 = Parser::new(Lexer::new(input3)).parse_expr();
+    let ast1 = Parser::new(Lexer::new(input1), "test1.llm".to_string()).parse_expr();
+    let ast2 = Parser::new(Lexer::new(input2), "test2.llm".to_string()).parse_expr();
+    let ast3 = Parser::new(Lexer::new(input3), "test3.llm".to_string()).parse_expr();
 
     let fp1 = ast1.structural_fingerprint();
     let fp2 = ast2.structural_fingerprint();
@@ -196,7 +196,7 @@ fn test_positive_fingerprint() {
 fn test_positive_import() {
     let context = Context::create();
     let input = "I math sin\n: test x @ sin ^0";
-    let mut parser = Parser::new(Lexer::new(input));
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test");
     
     let exprs = parser.parse_module();
@@ -216,7 +216,7 @@ fn test_positive_import() {
 #[test]
 fn test_positive_multi_arity_parsing() {
     let input = "@2 add2 1 2";
-    let ast = Parser::new(Lexer::new(input)).parse_expr();
+    let ast = Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr();
     if let Expr::Apply(func, args) = ast {
         if let Expr::Identifier(name) = *func {
             assert_eq!(name, "add2");
@@ -233,7 +233,7 @@ fn test_positive_multi_arity_parsing() {
 fn test_positive_multi_arity_codegen() {
     let context = Context::create();
     let input = ": add2 x y + ^1 ^0\n: main @2 add2 10 20";
-    let mut parser = Parser::new(Lexer::new(input));
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test");
     
     let exprs = parser.parse_module();
@@ -257,7 +257,7 @@ fn test_positive_nested_multi_arity() {
     // f(x, y, z) = x + (y * z)
     // @3 f 1 2 3
     let input = ": f x y z + ^2 * ^1 ^0\n: main @3 f 1 2 3";
-    let mut parser = Parser::new(Lexer::new(input));
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test");
     
     let exprs = parser.parse_module();
@@ -280,8 +280,8 @@ fn test_positive_fingerprint_arity() {
     let input1 = ": f1 x @ g ^0";
     let input2 = ": f2 x y @2 g ^1 ^0";
 
-    let ast1 = Parser::new(Lexer::new(input1)).parse_expr();
-    let ast2 = Parser::new(Lexer::new(input2)).parse_expr();
+    let ast1 = Parser::new(Lexer::new(input1), "test1.llm".to_string()).parse_expr();
+    let ast2 = Parser::new(Lexer::new(input2), "test2.llm".to_string()).parse_expr();
 
     let fp1 = ast1.structural_fingerprint();
     let fp2 = ast2.structural_fingerprint();

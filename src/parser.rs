@@ -152,12 +152,17 @@ impl Expr {
 pub struct Parser {
     lexer: Lexer,
     current_token: Token,
+    filename: String,
 }
 
 impl Parser {
-    pub fn new(mut lexer: Lexer) -> Self {
+    pub fn new(mut lexer: Lexer, filename: String) -> Self {
         let current_token = lexer.next_token();
-        Self { lexer, current_token }
+        Self { lexer, current_token, filename }
+    }
+
+    fn report_error(&self, code: &str) -> ! {
+        panic!("{} ({}:{})", code, self.filename, self.lexer.line);
     }
 
     fn consume(&mut self) -> Token {
@@ -228,7 +233,7 @@ impl Parser {
                     }
                     Expr::Shape(name, fields, false)
                 } else {
-                    panic!("E002");
+                    self.report_error("E002");
                 }
             }
             Token::Define => {
@@ -246,7 +251,7 @@ impl Parser {
                                 if let Token::Identifier(arg_name) = self.consume() {
                                     args.push(Param { name: arg_name.clone(), expand: true });
                                 } else {
-                                    panic!("E002");
+                                    self.report_error("E002");
                                 }
                             }
                             _ => break,
@@ -255,7 +260,7 @@ impl Parser {
                     let body = self.parse_expr();
                     Expr::Define(name, args, Box::new(body), false)
                 } else {
-                    panic!("E002");
+                    self.report_error("E002");
                 }
             }
             Token::Export => {
@@ -263,7 +268,7 @@ impl Parser {
                 match self.parse_expr() {
                     Expr::Shape(n, f, _) => Expr::Shape(n, f, true),
                     Expr::Define(n, a, b, _) => Expr::Define(n, a, b, true),
-                    _ => panic!("E015"),
+                    _ => self.report_error("E015"),
                 }
             }
             Token::New => {
@@ -272,7 +277,7 @@ impl Parser {
                     let count = self.parse_expr();
                     Expr::New(name, Box::new(count))
                 } else {
-                    panic!("E002");
+                    self.report_error("E002");
                 }
             }
             Token::Get => {
@@ -282,7 +287,7 @@ impl Parser {
                     let index = self.parse_expr();
                     Expr::Get(Box::new(instance), field, Box::new(index))
                 } else {
-                    panic!("E002");
+                    self.report_error("E002");
                 }
             }
             Token::Set => {
@@ -293,7 +298,7 @@ impl Parser {
                     let value = self.parse_expr();
                     Expr::Set(Box::new(instance), field, Box::new(index), Box::new(value))
                 } else {
-                    panic!("E002");
+                    self.report_error("E002");
                 }
             }
             Token::Question => {
@@ -308,7 +313,7 @@ impl Parser {
                 if let Token::Identifier(name) = self.consume() {
                     Expr::Expand(name)
                 } else {
-                    panic!("E002");
+                    self.report_error("E002");
                 }
             }
             Token::Let => {
@@ -318,7 +323,7 @@ impl Parser {
                     let body = self.parse_expr();
                     Expr::Let(name, Box::new(val), Box::new(body))
                 } else {
-                    panic!("E002");
+                    self.report_error("E002");
                 }
             }
             Token::Import => {
@@ -327,13 +332,13 @@ impl Parser {
                     if let Token::Identifier(symbol) = self.consume() {
                         Expr::Import(module, symbol)
                     } else {
-                        panic!("E002");
+                        self.report_error("E002");
                     }
                 } else {
-                    panic!("E002");
+                    self.report_error("E002");
                 }
             }
-            Token::EOF => panic!("E000"),
+            Token::EOF => self.report_error("E000"),
         }
     }
 
