@@ -42,8 +42,18 @@ impl Parser {
     }
 
     fn load_signature(&self, module: &str) -> (Vec<(String, usize)>, Vec<(String, Vec<String>)>) {
-        let sig_path = format!("{}.llmi", module);
-        let content = std::fs::read_to_string(&sig_path).unwrap_or_default();
+        use std::path::Path;
+        let mut sig_path = format!("{}.llmi", module);
+        
+        // Try relative to current file first
+        if let Some(parent) = Path::new(&self.filename).parent() {
+            let rel_path = parent.join(format!("{}.llmi", module));
+            if rel_path.exists() {
+                sig_path = rel_path.to_str().unwrap().to_string();
+            }
+        }
+
+        let content = std::fs::read_to_string(&sig_path).map_err(|e| format!("Could not read {}: {}", sig_path, e)).unwrap();
         let mut funcs = Vec::new();
         let mut shapes = Vec::new();
         for line in content.lines() {
@@ -55,10 +65,10 @@ impl Parser {
                     }
                 }
             } else if line.starts_with('#') {
-                let parts: Vec<&str> = line[1..].trim().split_whitespace().collect();
+                let parts: Vec<&str> = line.trim().split_whitespace().collect();
                 if parts.len() >= 2 {
-                    let name = parts[0].to_string();
-                    let fields = parts[1..].iter().map(|s| s.to_string()).collect();
+                    let name = parts[1].to_string();
+                    let fields = parts[2..].iter().map(|s| s.to_string()).collect();
                     shapes.push((name, fields));
                 }
             }
@@ -118,6 +128,13 @@ impl Parser {
             Token::Len => {
                 self.consume();
                 Expr::Len(Box::new(self.parse_expr()))
+            }
+            Token::StrSub => {
+                self.consume();
+                let s = self.parse_expr();
+                let b = self.parse_expr();
+                let l = self.parse_expr();
+                Expr::Sub(Box::new(s), Box::new(b), Box::new(l))
             }
             Token::Cat => {
                 self.consume();

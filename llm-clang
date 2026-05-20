@@ -5,11 +5,19 @@
 if command -v llmlang >/dev/null 2>&1; then
     LLMLANG_BIN="llmlang"
 else
-    LLMLANG_BIN="$(dirname "$0")/target/release/llmlang"
+    REL_BIN="$(dirname "$0")/target/release/llmlang"
+    DEB_BIN="$(dirname "$0")/target/debug/llmlang"
     
-    if [ ! -f "$LLMLANG_BIN" ]; then
-        # Fallback to debug if release isn't built
-        LLMLANG_BIN="$(dirname "$0")/target/debug/llmlang"
+    if [ -f "$REL_BIN" ] && [ -f "$DEB_BIN" ]; then
+        if [ "$REL_BIN" -nt "$DEB_BIN" ]; then
+            LLMLANG_BIN="$REL_BIN"
+        else
+            LLMLANG_BIN="$DEB_BIN"
+        fi
+    elif [ -f "$REL_BIN" ]; then
+        LLMLANG_BIN="$REL_BIN"
+    else
+        LLMLANG_BIN="$DEB_BIN"
     fi
 fi
 
@@ -22,16 +30,20 @@ args=("$@")
 processed_args=()
 compiler_args=()
 tmp_files=()
+compile_only=false
 
 # Extract compiler-specific flags
 i=0
 while [ $i -lt ${#args[@]} ]; do
     arg="${args[$i]}"
     case "$arg" in
-        --parallel|--threads|--queue|--config|-c)
+        --parallel|--threads|--queue|--config)
             compiler_args+=("$arg")
             i=$((i + 1))
             compiler_args+=("${args[$i]}")
+            ;;
+        -c)
+            compile_only=true
             ;;
         *.llm)
             # Handled in the next loop
@@ -62,6 +74,10 @@ for arg in "${processed_args[@]}"; do
     fi
 done
 
+if [ "$compile_only" = true ]; then
+    exit 0
+fi
+
 # Path to the runtime
 RT_DIR="$(dirname "$0")/src/runtime"
 RT_OBJ_DIR="$(dirname "$0")/target/runtime"
@@ -78,9 +94,5 @@ done
 # Call clang to link the object files including all runtime objects
 clang "${final_args[@]}" "$RT_OBJ_DIR"/*.o -lpthread
 LINK_RET=$?
-
-# If the user didn't specify -c, we might want to cleanup .o files?
-# Clang usually does this if it handles the whole pipeline.
-# For this wrapper, we'll keep them to match clang behavior when passing .o files.
 
 exit $LINK_RET

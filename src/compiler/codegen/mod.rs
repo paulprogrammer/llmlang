@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use inkwell::targets::{Target, TargetMachine, InitializationConfig, FileType};
 use inkwell::OptimizationLevel;
 use crate::Config;
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VariableState {
@@ -32,6 +33,9 @@ pub struct CodeGen<'ctx> {
     pub warnings: std::cell::RefCell<Vec<String>>,
     pub templates: std::cell::RefCell<HashMap<String, (Vec<Param>, Expr)>>,
     pub config: Config,
+    pub input_path: String,
+    pub has_exports: std::cell::Cell<bool>,
+    pub exports: std::cell::RefCell<Vec<String>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -59,10 +63,25 @@ impl<'ctx> CodeGen<'ctx> {
             warnings: std::cell::RefCell::new(Vec::new()),
             templates: std::cell::RefCell::new(HashMap::new()),
             config,
+            input_path: module_name.to_string(),
+            has_exports: std::cell::Cell::new(false),
+            exports: std::cell::RefCell::new(Vec::new()),
         }
     }
 
-    pub fn gen_shape(&self, name: &str, fields: &[String]) {
+    fn mangle_name(&self, name: &str) -> String {
+        if name == "main" { return name.to_string(); }
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.input_path.hash(&mut hasher);
+        let hash = hasher.finish();
+        format!("__llm_{:x}_{}", hash, name)
+    }
+
+    pub fn gen_shape(&self, name: &str, fields: &[String], exported: bool) {
+        if exported { 
+            self.has_exports.set(true); 
+            self.exports.borrow_mut().push(name.to_string());
+        }
         self.shapes.borrow_mut().insert(name.to_string(), fields.to_vec());
     }
 
@@ -102,8 +121,6 @@ impl<'ctx> CodeGen<'ctx> {
     fn gen_string_constant(&self, s: &str) -> BasicValueEnum<'ctx> {
         let string_val = self.context.const_string(s.as_bytes(), true);
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        use std::hash::Hasher;
-        use std::hash::Hash;
         s.hash(&mut hasher);
         let hash = hasher.finish();
         let global_name = format!("str_const_{:x}", hash);
@@ -242,7 +259,12 @@ impl<'ctx> CodeGen<'ctx> {
                 if let Some(func) = self.module.get_function(name) {
                     func.as_global_value().as_pointer_value().into()
                 } else {
-                    panic!("E013");
+                    let mangled = self.mangle_name(name);
+                    if let Some(func) = self.module.get_function(&mangled) {
+                        func.as_global_value().as_pointer_value().into()
+                    } else {
+                        panic!("E013: Unknown identifier {}", name);
+                    }
                 }
             }
             Expr::DeBruijn(index) => {
@@ -483,7 +505,13 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Expr::Apply(func_expr, args) => {
                 if let Expr::Identifier(ref name) = **func_expr {
-                    let template_opt = self.templates.borrow().get(name).cloned();
+                    let final_func_name = if let Some(_f) = self.module.get_function(name) {
+                        name.to_string()
+                    } else {
+                        self.mangle_name(name)
+                    };
+
+                    let template_opt = self.templates.borrow().get(&final_func_name).cloned();
                     let mut args_vals = Vec::new();
                     let mut handles = Vec::new();
                     let parallel_threshold = self.config.parallel_threshold;
@@ -517,7 +545,7 @@ impl<'ctx> CodeGen<'ctx> {
                         stack.truncate(initial_stack_len);
                         res
                     } else {
-                        let function = self.module.get_function(name).expect("E010");
+                        let function = self.module.get_function(&final_func_name).expect("E010");
                         let mut call_args = Vec::new();
                         for val in args_vals {
                             call_args.push(val.into());
@@ -747,8 +775,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                 let old_val = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), col_ptr, &[i], "gep").unwrap() }, "old_val").unwrap();
                 let res_val = if let Expr::Identifier(ref name) = **func_expr {
-                    let func_val = self.module.get_function(name).expect("E010");
-                    self.get_call_res(self.builder.build_call(func_val, &[old_val.into()], "mapped").unwrap())
+                    let function = if let Some(f) = self.module.get_function(name) {
+                        f
+                    } else {
+                        let mangled = self.mangle_name(name);
+                        self.module.get_function(&mangled).expect("E010")
+                    };
+                    self.get_call_res(self.builder.build_call(function, &[old_val.into()], "mapped").unwrap())
                 } else {
                     old_val
                 };
@@ -812,10 +845,15 @@ impl<'ctx> CodeGen<'ctx> {
                     row_vals.push(val);
                 }
                 let matched = if let Expr::Identifier(ref name) = **func_expr {
-                    let func_val = self.module.get_function(name).expect("E010");
+                    let function = if let Some(f) = self.module.get_function(name) {
+                        f
+                    } else {
+                        let mangled = self.mangle_name(name);
+                        self.module.get_function(&mangled).expect("E010")
+                    };
                     let mut meta_vals = Vec::new();
                     for v in &row_vals { meta_vals.push((*v).into()); }
-                    let res_val = self.get_call_res(self.builder.build_call(func_val, &meta_vals, "pred").unwrap());
+                    let res_val = self.get_call_res(self.builder.build_call(function, &meta_vals, "pred").unwrap());
                     let res = self.as_int(res_val);
                     self.builder.build_int_compare(inkwell::IntPredicate::NE, res, self.context.i64_type().const_int(0, false), "is_matched").unwrap()
                 } else {
@@ -875,10 +913,15 @@ impl<'ctx> CodeGen<'ctx> {
                     row_vals2.push(val);
                 }
                 let matched2 = if let Expr::Identifier(ref name) = **func_expr {
-                    let func_val = self.module.get_function(name).expect("E010");
+                    let function = if let Some(f) = self.module.get_function(name) {
+                        f
+                    } else {
+                        let mangled = self.mangle_name(name);
+                        self.module.get_function(&mangled).expect("E010")
+                    };
                     let mut meta_vals = Vec::new();
                     for v in &row_vals2 { meta_vals.push((*v).into()); }
-                    let res_val = self.get_call_res(self.builder.build_call(func_val, &meta_vals, "pred").unwrap());
+                    let res_val = self.get_call_res(self.builder.build_call(function, &meta_vals, "pred").unwrap());
                     let res = self.as_int(res_val);
                     self.builder.build_int_compare(inkwell::IntPredicate::NE, res, self.context.i64_type().const_int(0, false), "is_matched").unwrap()
                 } else {
@@ -1002,18 +1045,32 @@ impl<'ctx> CodeGen<'ctx> {
         self.module.add_function(symbol_name, fn_type, None);
     }
 
-    pub fn gen_function(&self, name: &str, params: Vec<Param>, body: &Expr) -> FunctionValue<'ctx> {
+    pub fn gen_function(&self, name: &str, params: Vec<Param>, body: &Expr, exported: bool) -> FunctionValue<'ctx> {
+        if exported { 
+            self.has_exports.set(true); 
+            self.exports.borrow_mut().push(name.to_string());
+        }
+        let final_name = if exported || name == "main" {
+            name.to_string()
+        } else {
+            self.mangle_name(name)
+        };
+
         if params.iter().any(|p| p.expand) {
-            self.templates.borrow_mut().insert(name.to_string(), (params, body.clone()));
+            self.templates.borrow_mut().insert(final_name.clone(), (params, body.clone()));
             let fn_type = self.context.i64_type().fn_type(&[], false);
-            return self.module.add_function(name, fn_type, None);
+            return self.module.add_function(&final_name, fn_type, None);
         }
 
         let arg_count = params.len();
         let i64_type = self.context.i64_type();
         let args_types = vec![i64_type.into(); arg_count];
         let fn_type = i64_type.fn_type(&args_types, false);
-        let function = self.module.add_function(name, fn_type, None);
+        let function = self.module.add_function(&final_name, fn_type, None);
+        if !exported && name != "main" {
+            function.set_linkage(inkwell::module::Linkage::Internal);
+        }
+        
         let basic_block = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(basic_block);
         let mut stack = Vec::new();
@@ -1059,20 +1116,25 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub fn emit_signature_file(&self) -> String {
         let mut sig = String::new();
+        let exports = self.exports.borrow();
         let shapes = self.shapes.borrow();
         for (name, fields) in shapes.iter() {
-            sig.push_str(&format!("# {} {}\n", name, fields.join(" ")));
+            if exports.contains(name) {
+                sig.push_str(&format!("# {} {}\n", name, fields.join(" ")));
+            }
         }
         for func in self.module.get_functions() {
             let name = func.get_name().to_str().unwrap();
-            if name == "main" || name.starts_with("trap_") || name.starts_with("parallel_") { continue; }
-            let param_count = func.count_params();
-            if param_count > 0 || !self.templates.borrow().contains_key(name) {
+            if name == "main" || name.starts_with("trap_") || name.starts_with("parallel_") || name.starts_with("__llm_") { continue; }
+            if exports.contains(&name.to_string()) {
+                let param_count = func.count_params();
                 sig.push_str(&format!(": {} {}\n", name, param_count));
             }
         }
         for (name, (params, _)) in self.templates.borrow().iter() {
-            sig.push_str(&format!(": {} {}\n", name, params.len()));
+            if exports.contains(name) {
+                sig.push_str(&format!(": {} {}\n", name, params.len()));
+            }
         }
         sig
     }

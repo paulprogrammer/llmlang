@@ -132,33 +132,29 @@ fn main() {
     let lexer = Lexer::new(&input);
     let mut parser = Parser::new(lexer, input_path_str.to_string());
     
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut expressions = parser.parse_module();
-        
-        // 1. Dead Function Elimination (DFE)
-        expressions = llmlang::compiler::analysis::prune_dead_code(expressions);
+    let expressions = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        parser.parse_module()
+    })).unwrap_or_else(|_| process::exit(1));
 
-        for expr in expressions {
-            match expr {
-                Expr::Shape(name, fields, _exported) => {
-                    codegen.gen_shape(&name, &fields);
-                }
-                Expr::Define(name, params, body, _exported) => {
-                    codegen.gen_function(&name, params, &body);
-                }
-                Expr::Import(module, symbol, arity) => {
-                    codegen.gen_import(&module, &symbol, arity);
-                }
-                _ => {}
+    // 1. Dead Function Elimination (DFE)
+    let expressions = llmlang::compiler::analysis::prune_dead_code(expressions);
+
+    for expr in expressions {
+        match expr {
+            Expr::Shape(name, fields, exported) => {
+                codegen.gen_shape(&name, &fields, exported);
             }
+            Expr::Define(name, params, body, exported) => {
+                codegen.gen_function(&name, params, &body, exported);
+            }
+            Expr::Import(module, symbol, arity) => {
+                codegen.gen_import(&module, &symbol, arity);
+            }
+            _ => {}
         }
-    }));
-
-    if result.is_err() {
-        process::exit(1);
     }
 
-    if emit_sig || output_path.is_some() {
+    if emit_sig || (output_path.is_some() && codegen.has_exports.get()) {
         let sig = codegen.emit_signature_file();
         let sig_path = match output_path {
             Some(p) => {

@@ -27,11 +27,36 @@ fi
 echo "Running llmlang self-hosted tests..."
 echo "------------------------------------"
 
-for test_file in "${TEST_FILES[@]}"; do
+# 1. Compile Libraries (files without : main)
+LIBS=()
+APPS=()
+
+for f in "${TEST_FILES[@]}"; do
+    if grep -q ": main" "$f"; then
+        APPS+=("$f")
+    else
+        LIBS+=("$f")
+    fi
+done
+
+LIB_OBJS=()
+for lib in "${LIBS[@]}"; do
+    obj="${lib%.llm}.o"
+    ./llm-clang -c "$lib" "${OTHER_ARGS[@]}" -o "$obj"
+    if [ $? -eq 0 ]; then
+        LIB_OBJS+=("$obj")
+    else
+        echo -e "${RED}[FAIL]${NC} $(basename "$lib") (Library compilation failed)"
+        FAILED=$((FAILED + 1))
+    fi
+done
+
+# 2. Run Applications
+for test_file in "${APPS[@]}"; do
     test_name=$(basename "$test_file")
     bin_name="${test_file%.llm}_bin"
     
-    ./llm-clang "$test_file" "${OTHER_ARGS[@]}" -o "$bin_name" > /dev/null 2>&1
+    ./llm-clang "$test_file" "${LIB_OBJS[@]}" "${OTHER_ARGS[@]}" -o "$bin_name"
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}[FAIL]${NC} $test_name (Compilation failed)"
@@ -39,7 +64,7 @@ for test_file in "${TEST_FILES[@]}"; do
         continue
     fi
     
-    ./"$bin_name" > /dev/null 2>&1
+    ./"$bin_name"
     exit_code=$?
     
     if [ $exit_code -eq 0 ]; then
@@ -50,8 +75,11 @@ for test_file in "${TEST_FILES[@]}"; do
         FAILED=$((FAILED + 1))
     fi
     
-    rm "$bin_name"
+    rm -f "$bin_name"
 done
+
+# Cleanup library objects and signatures
+rm -f tests/lang/*.o tests/lang/*.llmi
 
 echo "------------------------------------"
 echo -e "Summary: ${GREEN}$PASSED passed${NC}, ${RED}$FAILED failed${NC}"
