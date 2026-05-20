@@ -1,0 +1,19 @@
+// Complex Ownership, Borrowing, and Trapping
+
+: process_val val
+    + ⚓ val 10
+
+: consume_val val
+    + ⮞ val 5
+
+: fail_func
+    🚨 "Expected failure"
+
+: main
+    L x 42
+    L first @1 process_val ⚓ x
+    . ? = ⚓ first 52 0 🚨 "First process failed"
+    L second @1 consume_val ⮞ x
+    . ? = ⚓ second 47 0 🚨 "Consume failed"
+    L trap_res 🛡️ @0 fail_func 999
+    ? = ⚓ trap_res 999 0 🚨 "Trap handling failed"
