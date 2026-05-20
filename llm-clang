@@ -37,7 +37,7 @@ i=0
 while [ $i -lt ${#args[@]} ]; do
     arg="${args[$i]}"
     case "$arg" in
-        --parallel|--threads|--queue|--config)
+        --parallel|--threads|--queue|--config|-I)
             compiler_args+=("$arg")
             i=$((i + 1))
             compiler_args+=("${args[$i]}")
