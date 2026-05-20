@@ -550,4 +550,65 @@ fn test_esoteric_multi_move_error() {
 }
 
 
+#[test]
+fn test_negative_import_missing_module() {
+    let input = "I non_existent_module some_symbol";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        parser.parse_module()
+    }));
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_negative_import_missing_symbol() {
+    use std::fs::File;
+    use std::io::Write;
+    let sig_content = ": existing_symbol 1\n";
+    let sig_path = "temp_lib.llmi";
+    let mut file = File::create(sig_path).unwrap();
+    file.write_all(sig_content.as_bytes()).unwrap();
+
+    let input = "I temp_lib missing_symbol";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        parser.parse_module()
+    }));
+    
+    let _ = std::fs::remove_file(sig_path);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_positive_import_search_path() {
+    use std::fs::{create_dir_all, File, remove_dir_all};
+    use std::io::Write;
+    
+    let temp_dir = "temp_import_dir";
+    create_dir_all(temp_dir).unwrap();
+    
+    let sig_content = ": existing_symbol 2\n";
+    let sig_path = format!("{}/temp_lib2.llmi", temp_dir);
+    let mut file = File::create(sig_path).unwrap();
+    file.write_all(sig_content.as_bytes()).unwrap();
+
+    let input = "I temp_lib2 existing_symbol";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    parser.import_paths.push(temp_dir.to_string());
+    
+    let exprs = parser.parse_module();
+    
+    let _ = remove_dir_all(temp_dir);
+
+    assert_eq!(exprs.len(), 1);
+    if let Expr::Import(module, symbol, arity) = &exprs[0] {
+        assert_eq!(module, "temp_lib2");
+        assert_eq!(symbol, "existing_symbol");
+        assert_eq!(*arity, 2);
+    } else {
+        panic!("Expected Expr::Import");
+    }
+}
+
+
 

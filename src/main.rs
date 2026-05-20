@@ -23,6 +23,7 @@ OPTIONS:
     -S, --emit-ir       Emit LLVM IR to stdout or to the file specified by -o
     --emit-sig          Emit structural signature file (.llms) for indexing
     -c, --config <FILE> Path to a JSON configuration file
+    -I <PATH>           Add a directory to the module search path
     --parallel <NUM>    Set the complexity threshold for auto-parallelism (default: 50)
     --threads <NUM>     Set the number of worker threads (default: 8)
     --queue <NUM>       Set the thread pool queue size (default: 64)
@@ -54,6 +55,7 @@ fn main() {
     let mut emit_ir = false;
     let mut emit_sig = false;
     let mut config = llmlang::Config::default();
+    let mut import_paths = Vec::new();
 
     let mut i = 1;
     while i < args.len() {
@@ -83,6 +85,12 @@ fn main() {
                         eprintln!("Could not parse config file {}: {}", args[i], e);
                         process::exit(1);
                     });
+                }
+            }
+            "-I" => {
+                i += 1;
+                if i < args.len() {
+                    import_paths.push(args[i].clone());
                 }
             }
             "--parallel" => {
@@ -131,6 +139,7 @@ fn main() {
 
     let lexer = Lexer::new(&input);
     let mut parser = Parser::new(lexer, input_path_str.to_string());
+    parser.import_paths = import_paths;
     
     let expressions = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         parser.parse_module()

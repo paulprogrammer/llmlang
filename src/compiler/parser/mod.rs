@@ -6,12 +6,19 @@ pub struct Parser {
     current_token: Token,
     filename: String,
     scopes: Vec<Vec<String>>,
+    pub import_paths: Vec<String>,
 }
 
 impl Parser {
     pub fn new(mut lexer: Lexer, filename: String) -> Self {
         let current_token = lexer.next_token();
-        Self { lexer, current_token, filename, scopes: Vec::new() }
+        Self {
+            lexer,
+            current_token,
+            filename,
+            scopes: Vec::new(),
+            import_paths: Vec::new(),
+        }
     }
 
     fn push_scope(&mut self) {
@@ -43,17 +50,46 @@ impl Parser {
 
     fn load_signature(&self, module: &str) -> (Vec<(String, usize)>, Vec<(String, Vec<String>)>) {
         use std::path::Path;
-        let mut sig_path = format!("{}.llmi", module);
-        
-        // Try relative to current file first
-        if let Some(parent) = Path::new(&self.filename).parent() {
-            let rel_path = parent.join(format!("{}.llmi", module));
-            if rel_path.exists() {
-                sig_path = rel_path.to_str().unwrap().to_string();
+        let sig_filename = format!("{}.llmi", module);
+        let mut found_path = None;
+
+        // 1. Try search paths specified via -I first
+        for path_str in &self.import_paths {
+            let p = Path::new(path_str).join(&sig_filename);
+            if p.exists() {
+                found_path = Some(p);
+                break;
             }
         }
 
-        let content = std::fs::read_to_string(&sig_path).map_err(|e| format!("Could not read {}: {}", sig_path, e)).unwrap();
+        // 2. Try relative to current file
+        if found_path.is_none() {
+            if let Some(parent) = Path::new(&self.filename).parent() {
+                let rel_path = parent.join(&sig_filename);
+                if rel_path.exists() {
+                    found_path = Some(rel_path);
+                }
+            }
+        }
+
+        // 3. Try working directory fallback
+        if found_path.is_none() {
+            let fallback_path = Path::new(&sig_filename);
+            if fallback_path.exists() {
+                found_path = Some(fallback_path.to_path_buf());
+            }
+        }
+
+        let actual_path = match found_path {
+            Some(p) => p,
+            None => {
+                self.report_error("E017");
+            }
+        };
+
+        let content = std::fs::read_to_string(&actual_path).unwrap_or_else(|_| {
+            self.report_error("E017");
+        });
         let mut funcs = Vec::new();
         let mut shapes = Vec::new();
         for line in content.lines() {
@@ -262,9 +298,10 @@ impl Parser {
                 // If the symbol is a shape, return it as a Shape expr so codegen registers it
                 if let Some((name, fields)) = shapes.iter().find(|(name, _)| name == &symbol) {
                     Expr::Shape(name.clone(), fields.clone(), false)
+                } else if let Some((_, arity)) = funcs.iter().find(|(name, _)| name == &symbol) {
+                    Expr::Import(module, symbol, *arity)
                 } else {
-                    let arity = funcs.iter().find(|(name, _)| name == &symbol).map(|(_, a)| *a).unwrap_or(1);
-                    Expr::Import(module, symbol, arity)
+                    self.report_error("E018");
                 }
             }
             Token::Apply(arity) => {
