@@ -7,6 +7,7 @@ pub struct Parser {
     filename: String,
     scopes: Vec<Vec<String>>,
     pub import_paths: Vec<String>,
+    pub imported_shapes: Vec<(String, String)>,
 }
 
 impl Parser {
@@ -18,6 +19,7 @@ impl Parser {
             filename,
             scopes: Vec::new(),
             import_paths: Vec::new(),
+            imported_shapes: Vec::new(),
         }
     }
 
@@ -46,6 +48,15 @@ impl Parser {
             index += scope.len();
         }
         None
+    }
+
+    fn resolve_shape_name(&self, name: String) -> String {
+        for (sym, module) in &self.imported_shapes {
+            if sym == &name {
+                return format!("{}_{}", module, name);
+            }
+        }
+        name
     }
 
     fn load_signature(&self, module: &str) -> (Vec<(String, usize)>, Vec<(String, Vec<String>)>) {
@@ -222,8 +233,9 @@ impl Parser {
             Token::New => {
                 self.consume();
                 let name = if let Token::Identifier(s) = self.consume() { s } else { self.report_error("E002") };
+                let resolved_name = self.resolve_shape_name(name);
                 let count = self.parse_expr();
-                Expr::New(name, Box::new(count))
+                Expr::New(resolved_name, Box::new(count))
             }
             Token::Get => {
                 self.consume();
@@ -297,7 +309,9 @@ impl Parser {
                 
                 // If the symbol is a shape, return it as a Shape expr so codegen registers it
                 if let Some((name, fields)) = shapes.iter().find(|(name, _)| name == &symbol) {
-                    Expr::Shape(name.clone(), fields.clone(), false)
+                    self.imported_shapes.push((name.clone(), module.clone()));
+                    let mangled_name = format!("{}_{}", module, name);
+                    Expr::Shape(mangled_name, fields.clone(), false)
                 } else if let Some((_, arity)) = funcs.iter().find(|(name, _)| name == &symbol) {
                     Expr::Import(module, symbol, *arity)
                 } else {
@@ -360,7 +374,8 @@ impl Parser {
                 } else {
                     let s = self.parse_expr();
                     if let Token::String(shape_name) = self.consume() {
-                        Expr::Unpack(Box::new(s), shape_name)
+                        let resolved_name = self.resolve_shape_name(shape_name);
+                        Expr::Unpack(Box::new(s), resolved_name)
                     } else {
                         self.report_error("E002");
                     }

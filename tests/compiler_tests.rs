@@ -209,8 +209,8 @@ fn test_positive_import() {
     }
     
     let ir = codegen.module.print_to_string().to_string();
-    assert!(ir.contains("declare i64 @sin(i64)"));
-    assert!(ir.contains("call i64 @sin(i64 %0)"));
+    assert!(ir.contains("declare i64 @math_sin(i64)"));
+    assert!(ir.contains("call i64 @math_sin(i64 %0)"));
     
     // Cleanup
     let _ = std::fs::remove_file("math.llmi");
@@ -608,6 +608,51 @@ fn test_positive_import_search_path() {
     } else {
         panic!("Expected Expr::Import");
     }
+}
+
+#[test]
+fn test_negative_shape_field_mismatch() {
+    let context = Context::create();
+    let input = "# Point x y\n: main\n  L p N Point 1\n  G ⚓ p z 0\n";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    let codegen = CodeGen::new(&context, "test.llm", llmlang::Config::default());
+    let exprs = parser.parse_module();
+    
+    for expr in exprs {
+        match expr {
+            Expr::Shape(name, fields, exported) => {
+                codegen.gen_shape(&name, &fields, exported);
+            }
+            Expr::Define(name, params, body, exported) => {
+                let result = catch_unwind(AssertUnwindSafe(|| {
+                    codegen.gen_function(&name, params, &body, exported);
+                }));
+                assert!(result.is_err());
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn test_positive_namespaced_codegen() {
+    let context = Context::create();
+    let input = "X : area width height\n  * ⚓ width ⚓ height\n";
+    let mut parser = Parser::new(Lexer::new(input), "lib_geometry.llm".to_string());
+    let codegen = CodeGen::new(&context, "lib_geometry.llm", llmlang::Config::default());
+    let exprs = parser.parse_module();
+    
+    for expr in exprs {
+        match expr {
+            Expr::Define(name, params, body, exported) => {
+                codegen.gen_function(&name, params, &body, exported);
+            }
+            _ => {}
+        }
+    }
+    
+    let ir = codegen.module.print_to_string().to_string();
+    assert!(ir.contains("define i64 @lib_geometry_area"));
 }
 
 

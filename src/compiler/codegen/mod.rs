@@ -36,6 +36,7 @@ pub struct CodeGen<'ctx> {
     pub input_path: String,
     pub has_exports: std::cell::Cell<bool>,
     pub exports: std::cell::RefCell<Vec<String>>,
+    pub imports: std::cell::RefCell<HashMap<String, String>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -66,6 +67,44 @@ impl<'ctx> CodeGen<'ctx> {
             input_path: module_name.to_string(),
             has_exports: std::cell::Cell::new(false),
             exports: std::cell::RefCell::new(Vec::new()),
+            imports: std::cell::RefCell::new(HashMap::new()),
+        }
+    }
+
+    pub fn get_module_name(&self) -> String {
+        use std::path::Path;
+        Path::new(&self.input_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("main")
+            .to_string()
+    }
+
+    pub fn resolve_func_name(&self, name: &str) -> String {
+        if let Some(module) = self.imports.borrow().get(name) {
+            if module == "main" || module == "test" {
+                name.to_string()
+            } else {
+                format!("{}_{}", module, name)
+            }
+        } else {
+            let mod_name = self.get_module_name();
+            let namespaced = if mod_name == "main" || mod_name == "test" {
+                name.to_string()
+            } else {
+                format!("{}_{}", mod_name, name)
+            };
+            let local_mangled = self.mangle_name(name);
+            
+            if self.module.get_function(&namespaced).is_some() {
+                namespaced
+            } else if self.module.get_function(&local_mangled).is_some() {
+                local_mangled
+            } else if self.module.get_function(name).is_some() {
+                name.to_string()
+            } else {
+                local_mangled
+            }
         }
     }
 
@@ -256,15 +295,13 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Float(f) => self.context.f64_type().const_float(*f).into(),
             Expr::String(s) => self.gen_string_constant(s),
             Expr::Identifier(name) => {
-                if let Some(func) = self.module.get_function(name) {
+                let resolved = self.resolve_func_name(name);
+                if let Some(func) = self.module.get_function(&resolved) {
+                    func.as_global_value().as_pointer_value().into()
+                } else if let Some(func) = self.module.get_function(name) {
                     func.as_global_value().as_pointer_value().into()
                 } else {
-                    let mangled = self.mangle_name(name);
-                    if let Some(func) = self.module.get_function(&mangled) {
-                        func.as_global_value().as_pointer_value().into()
-                    } else {
-                        panic!("E013: Unknown identifier {}", name);
-                    }
+                    panic!("E013: Unknown identifier {}", name);
                 }
             }
             Expr::DeBruijn(index) => {
@@ -421,14 +458,27 @@ impl<'ctx> CodeGen<'ctx> {
                 let mut field_idx = 0;
                 let mut found = false;
                 let mut field_type_name = "i64";
-                for (_, fields) in shapes.iter() {
-                    if let Some(idx) = fields.iter().position(|f| f == field_name) {
-                        field_idx = idx + 1;
-                        field_type_name = &fields[idx];
-                        found = true;
-                        break;
+
+                let inferred = self.infer_shape(instance_expr, stack);
+                if let Some(ref shape_name) = inferred {
+                    if let Some(fields) = shapes.get(shape_name) {
+                        if let Some(idx) = fields.iter().position(|f| f == field_name) {
+                            field_idx = idx + 1;
+                            field_type_name = &fields[idx];
+                            found = true;
+                        }
+                    }
+                } else {
+                    for (_, fields) in shapes.iter() {
+                        if let Some(idx) = fields.iter().position(|f| f == field_name) {
+                            field_idx = idx + 1;
+                            field_type_name = &fields[idx];
+                            found = true;
+                            break;
+                        }
                     }
                 }
+
                 if !found { panic!("E007"); }
                 let llvm_field_type = self.get_llvm_type(field_type_name);
                 let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
@@ -449,14 +499,27 @@ impl<'ctx> CodeGen<'ctx> {
                 let mut field_idx = 0;
                 let mut found = false;
                 let mut field_type_name = "i64";
-                for (_, fields) in shapes.iter() {
-                    if let Some(idx) = fields.iter().position(|f| f == field_name) {
-                        field_idx = idx + 1;
-                        field_type_name = &fields[idx];
-                        found = true;
-                        break;
+
+                let inferred = self.infer_shape(instance_expr, stack);
+                if let Some(ref shape_name) = inferred {
+                    if let Some(fields) = shapes.get(shape_name) {
+                        if let Some(idx) = fields.iter().position(|f| f == field_name) {
+                            field_idx = idx + 1;
+                            field_type_name = &fields[idx];
+                            found = true;
+                        }
+                    }
+                } else {
+                    for (_, fields) in shapes.iter() {
+                        if let Some(idx) = fields.iter().position(|f| f == field_name) {
+                            field_idx = idx + 1;
+                            field_type_name = &fields[idx];
+                            found = true;
+                            break;
+                        }
                     }
                 }
+
                 if !found { panic!("E007"); }
                 let llvm_field_type = self.get_llvm_type(field_type_name);
                 let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
@@ -505,11 +568,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Expr::Apply(func_expr, args) => {
                 if let Expr::Identifier(ref name) = **func_expr {
-                    let final_func_name = if let Some(_f) = self.module.get_function(name) {
-                        name.to_string()
-                    } else {
-                        self.mangle_name(name)
-                    };
+                    let final_func_name = self.resolve_func_name(name);
 
                     let template_opt = self.templates.borrow().get(&final_func_name).cloned();
                     let mut args_vals = Vec::new();
@@ -775,12 +834,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                 let old_val = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), col_ptr, &[i], "gep").unwrap() }, "old_val").unwrap();
                 let res_val = if let Expr::Identifier(ref name) = **func_expr {
-                    let function = if let Some(f) = self.module.get_function(name) {
-                        f
-                    } else {
-                        let mangled = self.mangle_name(name);
-                        self.module.get_function(&mangled).expect("E010")
-                    };
+                    let resolved = self.resolve_func_name(name);
+                    let function = self.module.get_function(&resolved).expect("E010");
                     self.get_call_res(self.builder.build_call(function, &[old_val.into()], "mapped").unwrap())
                 } else {
                     old_val
@@ -845,12 +900,8 @@ impl<'ctx> CodeGen<'ctx> {
                     row_vals.push(val);
                 }
                 let matched = if let Expr::Identifier(ref name) = **func_expr {
-                    let function = if let Some(f) = self.module.get_function(name) {
-                        f
-                    } else {
-                        let mangled = self.mangle_name(name);
-                        self.module.get_function(&mangled).expect("E010")
-                    };
+                    let resolved = self.resolve_func_name(name);
+                    let function = self.module.get_function(&resolved).expect("E010");
                     let mut meta_vals = Vec::new();
                     for v in &row_vals { meta_vals.push((*v).into()); }
                     let res_val = self.get_call_res(self.builder.build_call(function, &meta_vals, "pred").unwrap());
@@ -913,12 +964,8 @@ impl<'ctx> CodeGen<'ctx> {
                     row_vals2.push(val);
                 }
                 let matched2 = if let Expr::Identifier(ref name) = **func_expr {
-                    let function = if let Some(f) = self.module.get_function(name) {
-                        f
-                    } else {
-                        let mangled = self.mangle_name(name);
-                        self.module.get_function(&mangled).expect("E010")
-                    };
+                    let resolved = self.resolve_func_name(name);
+                    let function = self.module.get_function(&resolved).expect("E010");
                     let mut meta_vals = Vec::new();
                     for v in &row_vals2 { meta_vals.push((*v).into()); }
                     let res_val = self.get_call_res(self.builder.build_call(function, &meta_vals, "pred").unwrap());
@@ -1039,10 +1086,16 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub fn gen_import(&self, _module_alias: &str, symbol_name: &str, arity: usize) {
+        self.imports.borrow_mut().insert(symbol_name.to_string(), _module_alias.to_string());
         let i64_type = self.context.i64_type();
         let args_types = vec![i64_type.into(); arity];
         let fn_type = i64_type.fn_type(&args_types, false);
-        self.module.add_function(symbol_name, fn_type, None);
+        let mangled_name = if _module_alias == "main" || _module_alias == "test" {
+            symbol_name.to_string()
+        } else {
+            format!("{}_{}", _module_alias, symbol_name)
+        };
+        self.module.add_function(&mangled_name, fn_type, None);
     }
 
     pub fn gen_function(&self, name: &str, params: Vec<Param>, body: &Expr, exported: bool) -> FunctionValue<'ctx> {
@@ -1050,8 +1103,15 @@ impl<'ctx> CodeGen<'ctx> {
             self.has_exports.set(true); 
             self.exports.borrow_mut().push(name.to_string());
         }
-        let final_name = if exported || name == "main" {
+        let final_name = if name == "main" {
             name.to_string()
+        } else if exported {
+            let mod_name = self.get_module_name();
+            if mod_name == "main" || mod_name == "test" {
+                name.to_string()
+            } else {
+                format!("{}_{}", mod_name, name)
+            }
         } else {
             self.mangle_name(name)
         };
@@ -1118,22 +1178,45 @@ impl<'ctx> CodeGen<'ctx> {
         let mut sig = String::new();
         let exports = self.exports.borrow();
         let shapes = self.shapes.borrow();
+        
+        let mod_name = self.get_module_name();
+        let prefix = if mod_name == "main" || mod_name == "test" {
+            String::new()
+        } else {
+            format!("{}_", mod_name)
+        };
+
         for (name, fields) in shapes.iter() {
-            if exports.contains(name) {
-                sig.push_str(&format!("# {} {}\n", name, fields.join(" ")));
+            let clean_name = if !prefix.is_empty() && name.starts_with(&prefix) {
+                &name[prefix.len()..]
+            } else {
+                name
+            };
+            if exports.contains(&clean_name.to_string()) {
+                sig.push_str(&format!("# {} {}\n", clean_name, fields.join(" ")));
             }
         }
         for func in self.module.get_functions() {
-            let name = func.get_name().to_str().unwrap();
-            if name == "main" || name.starts_with("trap_") || name.starts_with("parallel_") || name.starts_with("__llm_") { continue; }
+            let full_name = func.get_name().to_str().unwrap();
+            if full_name == "main" || full_name.starts_with("trap_") || full_name.starts_with("parallel_") || full_name.starts_with("__llm_") { continue; }
+            let name = if !prefix.is_empty() && full_name.starts_with(&prefix) {
+                &full_name[prefix.len()..]
+            } else {
+                full_name
+            };
             if exports.contains(&name.to_string()) {
                 let param_count = func.count_params();
                 sig.push_str(&format!(": {} {}\n", name, param_count));
             }
         }
         for (name, (params, _)) in self.templates.borrow().iter() {
-            if exports.contains(name) {
-                sig.push_str(&format!(": {} {}\n", name, params.len()));
+            let clean_name = if !prefix.is_empty() && name.starts_with(&prefix) {
+                &name[prefix.len()..]
+            } else {
+                name
+            };
+            if exports.contains(&clean_name.to_string()) {
+                sig.push_str(&format!(": {} {}\n", clean_name, params.len()));
             }
         }
         sig
