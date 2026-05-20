@@ -66,6 +66,47 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub fn gen_function(&self, name: &str, params: Vec<Param>, body: &Expr, exported: bool) -> FunctionValue<'ctx> {
+        // Run semantic verification
+        {
+            let mut shapes = HashMap::new();
+            for (shape_name, fields) in self.shapes.borrow().iter() {
+                shapes.insert(shape_name.clone(), fields.clone());
+            }
+
+            let mut functions = HashMap::new();
+            for call_name in body.get_calls() {
+                let resolved = self.resolve_func_name(&call_name);
+                if self.module.get_function(&resolved).is_some() 
+                    || self.templates.borrow().contains_key(&resolved) 
+                    || self.module.get_function(&call_name).is_some() 
+                {
+                    functions.insert(call_name, 0);
+                }
+            }
+            functions.insert(name.to_string(), params.len());
+
+            let mut verify_stack = Vec::new();
+            let mut verify_shapes = Vec::new();
+            let mut verify_expand = HashMap::new();
+            for (i, param) in params.iter().enumerate() {
+                verify_stack.push(VariableState::Available);
+                verify_shapes.push(None);
+                if param.expand {
+                    verify_expand.insert(param.name.clone(), i);
+                }
+            }
+            let mut verify_ctx = crate::compiler::analysis::verify::VerificationContext {
+                shapes,
+                functions,
+                stack: verify_stack,
+                stack_shapes: verify_shapes,
+                expand_map: verify_expand,
+            };
+            if let Err(err_code) = crate::compiler::analysis::verify::verify_expr(body, &mut verify_ctx) {
+                panic!("{}", err_code);
+            }
+        }
+
         if exported { 
             self.has_exports.set(true); 
             self.exports.borrow_mut().push(name.to_string());

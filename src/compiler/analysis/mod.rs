@@ -1,3 +1,5 @@
+pub mod verify;
+
 use crate::compiler::ast::{Expr};
 
 impl Expr {

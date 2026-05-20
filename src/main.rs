@@ -148,6 +148,12 @@ fn main() {
     // 1. Dead Function Elimination (DFE)
     let expressions = llmlang::compiler::analysis::prune_dead_code(expressions);
 
+    // 2. Semantic Verification Pass
+    if let Err(err_code) = llmlang::compiler::analysis::verify::verify_module(&expressions) {
+        eprintln!("{}", err_code);
+        process::exit(1);
+    }
+
     for expr in expressions {
         match expr {
             Expr::Shape(name, fields, exported) => {

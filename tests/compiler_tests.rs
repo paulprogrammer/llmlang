@@ -679,5 +679,50 @@ fn test_custom_signature_resolver() {
     }
 }
 
+#[test]
+fn test_verification_use_after_move() {
+    let input = "L x 42 . ⮞ ^0 ^0";
+    let ast = parse_expr(input);
+    let mut verify_ctx = llmlang::compiler::analysis::verify::VerificationContext {
+        shapes: std::collections::HashMap::new(),
+        functions: std::collections::HashMap::new(),
+        stack: vec![],
+        stack_shapes: vec![],
+        expand_map: std::collections::HashMap::new(),
+    };
+    let result = llmlang::compiler::analysis::verify::verify_expr(&ast, &mut verify_ctx);
+    assert_eq!(result, Err("E004".to_string()));
+}
+
+#[test]
+fn test_verification_double_move() {
+    let input = "L x 42 . ⮞ ^0 ⮞ ^0";
+    let ast = parse_expr(input);
+    let mut verify_ctx = llmlang::compiler::analysis::verify::VerificationContext {
+        shapes: std::collections::HashMap::new(),
+        functions: std::collections::HashMap::new(),
+        stack: vec![],
+        stack_shapes: vec![],
+        expand_map: std::collections::HashMap::new(),
+    };
+    let result = llmlang::compiler::analysis::verify::verify_expr(&ast, &mut verify_ctx);
+    assert_eq!(result, Err("E005".to_string()));
+}
+
+#[test]
+fn test_verification_if_stack_mismatch() {
+    let input = "L x 42 ? 1 ⮞ ^0 ^0";
+    let ast = parse_expr(input);
+    let mut verify_ctx = llmlang::compiler::analysis::verify::VerificationContext {
+        shapes: std::collections::HashMap::new(),
+        functions: std::collections::HashMap::new(),
+        stack: vec![],
+        stack_shapes: vec![],
+        expand_map: std::collections::HashMap::new(),
+    };
+    let result = llmlang::compiler::analysis::verify::verify_expr(&ast, &mut verify_ctx);
+    assert_eq!(result, Err("E009".to_string()));
+}
+
 
 
