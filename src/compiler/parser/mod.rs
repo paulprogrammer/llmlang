@@ -1,6 +1,54 @@
 use crate::compiler::lexer::{Token, Lexer};
 use crate::compiler::ast::{Expr, Param};
 
+pub trait SignatureResolver {
+    fn resolve(&self, module: &str, import_paths: &[String], filename: &str) -> Result<String, String>;
+}
+
+pub struct FsSignatureResolver;
+
+impl SignatureResolver for FsSignatureResolver {
+    fn resolve(&self, module: &str, import_paths: &[String], filename: &str) -> Result<String, String> {
+        use std::path::Path;
+        let sig_filename = format!("{}.llmi", module);
+        let mut found_path = None;
+
+        // 1. Try search paths specified via -I first
+        for path_str in import_paths {
+            let p = Path::new(path_str).join(&sig_filename);
+            if p.exists() {
+                found_path = Some(p);
+                break;
+            }
+        }
+
+        // 2. Try relative to current file
+        if found_path.is_none() {
+            if let Some(parent) = Path::new(filename).parent() {
+                let rel_path = parent.join(&sig_filename);
+                if rel_path.exists() {
+                    found_path = Some(rel_path);
+                }
+            }
+        }
+
+        // 3. Try working directory fallback
+        if found_path.is_none() {
+            let fallback_path = Path::new(&sig_filename);
+            if fallback_path.exists() {
+                found_path = Some(fallback_path.to_path_buf());
+            }
+        }
+
+        let actual_path = match found_path {
+            Some(p) => p,
+            None => return Err("E017".to_string()),
+        };
+
+        std::fs::read_to_string(&actual_path).map_err(|_| "E017".to_string())
+    }
+}
+
 pub struct Parser {
     lexer: Lexer,
     current_token: Token,
@@ -8,6 +56,7 @@ pub struct Parser {
     scopes: Vec<Vec<String>>,
     pub import_paths: Vec<String>,
     pub imported_shapes: Vec<(String, String)>,
+    pub resolver: Box<dyn SignatureResolver>,
 }
 
 impl Parser {
@@ -20,6 +69,7 @@ impl Parser {
             scopes: Vec::new(),
             import_paths: Vec::new(),
             imported_shapes: Vec::new(),
+            resolver: Box::new(FsSignatureResolver),
         }
     }
 
@@ -60,46 +110,8 @@ impl Parser {
     }
 
     fn load_signature(&self, module: &str) -> (Vec<(String, usize)>, Vec<(String, Vec<String>)>) {
-        use std::path::Path;
-        let sig_filename = format!("{}.llmi", module);
-        let mut found_path = None;
-
-        // 1. Try search paths specified via -I first
-        for path_str in &self.import_paths {
-            let p = Path::new(path_str).join(&sig_filename);
-            if p.exists() {
-                found_path = Some(p);
-                break;
-            }
-        }
-
-        // 2. Try relative to current file
-        if found_path.is_none() {
-            if let Some(parent) = Path::new(&self.filename).parent() {
-                let rel_path = parent.join(&sig_filename);
-                if rel_path.exists() {
-                    found_path = Some(rel_path);
-                }
-            }
-        }
-
-        // 3. Try working directory fallback
-        if found_path.is_none() {
-            let fallback_path = Path::new(&sig_filename);
-            if fallback_path.exists() {
-                found_path = Some(fallback_path.to_path_buf());
-            }
-        }
-
-        let actual_path = match found_path {
-            Some(p) => p,
-            None => {
-                self.report_error("E017");
-            }
-        };
-
-        let content = std::fs::read_to_string(&actual_path).unwrap_or_else(|_| {
-            self.report_error("E017");
+        let content = self.resolver.resolve(module, &self.import_paths, &self.filename).unwrap_or_else(|err_code| {
+            self.report_error(&err_code);
         });
         let mut funcs = Vec::new();
         let mut shapes = Vec::new();

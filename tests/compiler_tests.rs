@@ -5,12 +5,19 @@ use llmlang::compiler::codegen::{CodeGen};
 use inkwell::context::Context;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
+fn parse_expr(input: &str) -> Expr {
+    Parser::new(Lexer::new(input), "test.llm".to_string()).parse_expr()
+}
+
+fn parse_module(input: &str) -> Vec<Expr> {
+    Parser::new(Lexer::new(input), "test.llm".to_string()).parse_module()
+}
+
 #[test]
 fn test_positive_math() {
     let context = Context::create();
     let input = "+ 1 2";
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
-    let ast = parser.parse_expr();
+    let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     codegen.gen_function("main", vec![], &ast, false);
     let ir = codegen.module.print_to_string().to_string();
@@ -21,8 +28,7 @@ fn test_positive_math() {
 fn test_positive_div() {
     let context = Context::create();
     let input = "/ 10 2";
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
-    let ast = parser.parse_expr();
+    let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     codegen.gen_function("main", vec![], &ast, false);
     let ir = codegen.module.print_to_string().to_string();
@@ -33,9 +39,8 @@ fn test_positive_div() {
 fn test_positive_comparisons() {
     let context = Context::create();
     let input = "X : main x y < ⚓ ^1 ⚓ ^0";
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parser.parse_module()[0].clone() { codegen.gen_function(&name, params, &body, exported); }
+    if let Expr::Define(name, params, body, exported) = parse_module(input)[0].clone() { codegen.gen_function(&name, params, &body, exported); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("icmp slt i64 %0, %1"));
     assert!(ir.contains("zext i1") || ir.contains("zext i1 %lt to i64"));
@@ -45,9 +50,8 @@ fn test_positive_comparisons() {
 fn test_positive_bitwise() {
     let context = Context::create();
     let input = "X : main x y | & ⚓ ^1 ⚓ ^0 ^ ⚓ ^1 ⚓ ^0";
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parser.parse_module()[0].clone() { codegen.gen_function(&name, params, &body, exported); }
+    if let Expr::Define(name, params, body, exported) = parse_module(input)[0].clone() { codegen.gen_function(&name, params, &body, exported); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("and i64 %0, %1"));
     assert!(ir.contains("xor i64 %0, %1"));
@@ -58,8 +62,7 @@ fn test_positive_bitwise() {
 fn test_positive_debruijn() {
     let context = Context::create();
     let input = "X : add_one x + ^0 1";
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
-    let ast = parser.parse_expr();
+    let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported); }
     let ir = codegen.module.print_to_string().to_string();
@@ -85,8 +88,7 @@ fn test_positive_soa_shape() {
 fn test_positive_move_borrow() {
     let context = Context::create();
     let input = "X : test x + ⚓ ^0 ⮞ ^0"; 
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
-    let ast = parser.parse_expr();
+    let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported); }
     assert!(codegen.warnings.borrow().is_empty());
@@ -96,8 +98,7 @@ fn test_positive_move_borrow() {
 fn test_negative_double_move() {
     let context = Context::create();
     let input = "X : test x + ⮞ ^0 ⮞ ^0";
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
-    let ast = parser.parse_expr();
+    let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, _) = ast {
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -111,8 +112,7 @@ fn test_negative_double_move() {
 fn test_positive_let() {
     let context = Context::create();
     let input = "X : test x L y + ^0 1 ⮞ ^0"; 
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
-    let ast = parser.parse_expr();
+    let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported); }
     let ir = codegen.module.print_to_string().to_string();
@@ -123,8 +123,7 @@ fn test_positive_let() {
 fn test_positive_recursion() {
     let context = Context::create();
     let input = "X : fact n ? ^0 * ⚓ ^0 @ fact - ⮞ ^0 1 ⮞ ^0";
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
-    let ast = parser.parse_expr();
+    let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported); }
     let ir = codegen.module.print_to_string().to_string();
@@ -135,14 +134,12 @@ fn test_positive_recursion() {
 fn test_positive_expansion() {
     let context = Context::create();
     let input = "X : poly obj ! G ⚓ ! obj x 0";
-    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
-    let ast = parser.parse_expr();
+    let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     codegen.gen_shape("Point", &["x".to_string()], false);
     if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported); }
     let call_input = "@ poly N Point 1";
-    let mut call_parser = Parser::new(Lexer::new(call_input), "test.llm".to_string());
-    let call_ast = call_parser.parse_expr();
+    let call_ast = parse_expr(call_input);
     codegen.gen_function("wrapper", vec![], &call_ast, false);
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call ptr @llm_alloc"));
@@ -653,6 +650,33 @@ fn test_positive_namespaced_codegen() {
     
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("define i64 @lib_geometry_area"));
+}
+
+struct MockResolver;
+impl llmlang::compiler::parser::SignatureResolver for MockResolver {
+    fn resolve(&self, module: &str, _import_paths: &[String], _filename: &str) -> Result<String, String> {
+        if module == "math" {
+            Ok(": sin 1\n# Point x y\n".to_string())
+        } else {
+            Err("E017".to_string())
+        }
+    }
+}
+
+#[test]
+fn test_custom_signature_resolver() {
+    let input = "I math sin";
+    let mut parser = Parser::new(Lexer::new(input), "test.llm".to_string());
+    parser.resolver = Box::new(MockResolver);
+    let exprs = parser.parse_module();
+    assert_eq!(exprs.len(), 1);
+    if let Expr::Import(module, symbol, arity) = &exprs[0] {
+        assert_eq!(module, "math");
+        assert_eq!(symbol, "sin");
+        assert_eq!(*arity, 1);
+    } else {
+        panic!("Expected Expr::Import");
+    }
 }
 
 
