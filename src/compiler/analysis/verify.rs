@@ -29,7 +29,9 @@ fn infer_shape(expr: &Expr, stack_shapes: &[Option<String>]) -> Option<String> {
     }
 }
 
-pub fn verify_module(exprs: &[Expr]) -> Result<(), String> {
+use crate::compiler::error::CompileError;
+
+pub fn verify_module(exprs: &[Expr], filename: &str) -> Result<(), CompileError> {
     let mut shapes = HashMap::new();
     let mut functions = HashMap::new();
 
@@ -72,7 +74,9 @@ pub fn verify_module(exprs: &[Expr]) -> Result<(), String> {
                 expand_map,
             };
 
-            verify_expr(body, &mut context)?;
+            verify_expr(body, &mut context).map_err(|err_code| {
+                CompileError::new(&err_code, filename, 1)
+            })?;
         }
     }
 

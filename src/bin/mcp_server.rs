@@ -67,13 +67,17 @@ impl LLMLangMCPHandler {
                         continue;
                     }
                 };
-                let mut parser = Parser::new(Lexer::new(&content), entry.path().display().to_string());
-                let expressions = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    parser.parse_module()
-                })) {
+                let mut parser = match Parser::new(Lexer::new(&content), entry.path().display().to_string()) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Failed to initialize parser for {}: {}", entry.path().display(), e);
+                        continue;
+                    }
+                };
+                let expressions = match parser.parse_module() {
                     Ok(exprs) => exprs,
-                    Err(_) => {
-                        eprintln!("Failed to parse {}", entry.path().display());
+                    Err(e) => {
+                        eprintln!("Failed to parse {}: {}", entry.path().display(), e);
                         continue;
                     }
                 };
@@ -284,22 +288,22 @@ impl ServerHandler for LLMLangMCPHandler {
                     "get_diagnostics" => {
                         let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing path"))?;
                         let content = std::fs::read_to_string(path).map_err(|e| Error::protocol(ErrorCode::InternalError, e.to_string()))?;
-                        let mut parser = Parser::new(Lexer::new(&content), path.to_string());
+                        let mut parser = match Parser::new(Lexer::new(&content), path.to_string()) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                return Ok(json!({
+                                    "content": [MessageContent::Text { text: format!("Error: {}", e) }]
+                                }));
+                            }
+                        };
                         
-                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            parser.parse_module()
-                        }));
-
-                        match result {
+                        match parser.parse_module() {
                             Ok(_) => Ok(json!({
                                 "content": [MessageContent::Text { text: "No errors found".to_string() }]
                             })),
                             Err(e) => {
-                                let msg = if let Some(s) = e.downcast_ref::<&str>() { s.to_string() }
-                                          else if let Some(s) = e.downcast_ref::<String>() { s.clone() }
-                                          else { "Unknown error".to_string() };
                                 Ok(json!({
-                                    "content": [MessageContent::Text { text: format!("Error: {}", msg) }]
+                                    "content": [MessageContent::Text { text: format!("Error: {}", e) }]
                                 }))
                             }
                         }

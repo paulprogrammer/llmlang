@@ -53,10 +53,13 @@ pub enum Token {
     EOF,
 }
 
+use crate::compiler::error::CompileError;
+
 pub struct Lexer {
     input: Vec<char>,
     pos: usize,
     pub line: usize,
+    pub filename: String,
 }
 
 impl Lexer {
@@ -65,25 +68,26 @@ impl Lexer {
             input: input.chars().collect(),
             pos: 0,
             line: 1,
+            filename: String::new(),
         }
     }
 
-    pub fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> Result<Token, CompileError> {
         self.skip_whitespace();
 
         if self.pos >= self.input.len() {
-            return Token::EOF;
+            return Ok(Token::EOF);
         }
 
         let ch = self.input[self.pos];
         self.pos += 1;
 
-        match ch {
+        let tok = match ch {
             '@' => self.lex_arity_token(Token::Apply(1)),
             '+' => Token::Add,
             '-' => Token::Sub,
             '*' => Token::Mul,
-            '/' => self.lex_slash(),
+            '/' => self.lex_slash()?,
             '⮞' => Token::Move,
             '⚓' => Token::Borrow,
             '~' => Token::MutBorrow,
@@ -126,9 +130,10 @@ impl Lexer {
             '"' => self.lex_string(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
-            '\u{FE0F}' => self.next_token(),
-            _ => panic!("Unexpected character: {}", ch),
-        }
+            '\u{FE0F}' => return self.next_token(),
+            _ => return Err(CompileError::new("E001", &self.filename, self.line)),
+        };
+        Ok(tok)
     }
 
     fn lex_arity_token(&mut self, default: Token) -> Token {
@@ -230,7 +235,7 @@ impl Lexer {
         }
     }
 
-    fn lex_slash(&mut self) -> Token {
+    fn lex_slash(&mut self) -> Result<Token, CompileError> {
         if self.pos < self.input.len() && self.input[self.pos] == '/' {
             while self.pos < self.input.len() && self.input[self.pos] != '\n' {
                 self.pos += 1;
@@ -241,7 +246,7 @@ impl Lexer {
             }
             self.next_token()
         } else {
-            Token::Div
+            Ok(Token::Div)
         }
     }
 }

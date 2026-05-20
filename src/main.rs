@@ -138,18 +138,28 @@ fn main() {
     let codegen = CodeGen::new(&context, input_path_str, config);
 
     let lexer = Lexer::new(&input);
-    let mut parser = Parser::new(lexer, input_path_str.to_string());
+    let mut parser = match Parser::new(lexer, input_path_str.to_string()) {
+        Ok(p) => p,
+        Err(err) => {
+            eprintln!("{}", err);
+            process::exit(1);
+        }
+    };
     parser.import_paths = import_paths;
     
-    let expressions = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        parser.parse_module()
-    })).unwrap_or_else(|_| process::exit(1));
+    let expressions = match parser.parse_module() {
+        Ok(exprs) => exprs,
+        Err(err) => {
+            eprintln!("{}", err);
+            process::exit(1);
+        }
+    };
 
     // 1. Dead Function Elimination (DFE)
     let expressions = llmlang::compiler::analysis::prune_dead_code(expressions);
 
     // 2. Semantic Verification Pass
-    if let Err(err_code) = llmlang::compiler::analysis::verify::verify_module(&expressions) {
+    if let Err(err_code) = llmlang::compiler::analysis::verify::verify_module(&expressions, input_path_str) {
         eprintln!("{}", err_code);
         process::exit(1);
     }
@@ -160,7 +170,10 @@ fn main() {
                 codegen.gen_shape(&name, &fields, exported);
             }
             Expr::Define(name, params, body, exported) => {
-                codegen.gen_function(&name, params, &body, exported);
+                if let Err(err) = codegen.gen_function(&name, params, &body, exported) {
+                    eprintln!("{}", err);
+                    process::exit(1);
+                }
             }
             Expr::Import(module, symbol, arity) => {
                 codegen.gen_import(&module, &symbol, arity);

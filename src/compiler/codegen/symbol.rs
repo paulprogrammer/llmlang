@@ -1,5 +1,6 @@
 use crate::compiler::ast::{Expr, Param};
 use crate::compiler::codegen::{CodeGen, StackItem, VariableState};
+use crate::compiler::error::CompileError;
 use inkwell::values::FunctionValue;
 use inkwell::targets::{Target, TargetMachine, InitializationConfig, FileType};
 use inkwell::OptimizationLevel;
@@ -65,7 +66,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.module.add_function(&mangled_name, fn_type, None);
     }
 
-    pub fn gen_function(&self, name: &str, params: Vec<Param>, body: &Expr, exported: bool) -> FunctionValue<'ctx> {
+    pub fn gen_function(&self, name: &str, params: Vec<Param>, body: &Expr, exported: bool) -> Result<FunctionValue<'ctx>, CompileError> {
         // Run semantic verification
         {
             let mut shapes = HashMap::new();
@@ -103,7 +104,7 @@ impl<'ctx> CodeGen<'ctx> {
                 expand_map: verify_expand,
             };
             if let Err(err_code) = crate::compiler::analysis::verify::verify_expr(body, &mut verify_ctx) {
-                panic!("{}", err_code);
+                return Err(CompileError::new(&err_code, &self.input_path, 1));
             }
         }
 
@@ -127,7 +128,7 @@ impl<'ctx> CodeGen<'ctx> {
         if params.iter().any(|p| p.expand) {
             self.templates.borrow_mut().insert(final_name.clone(), (params, body.clone()));
             let fn_type = self.context.i64_type().fn_type(&[], false);
-            return self.module.add_function(&final_name, fn_type, None);
+            return Ok(self.module.add_function(&final_name, fn_type, None));
         }
 
         let arg_count = params.len();
@@ -157,7 +158,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
         self.builder.build_return(Some(&ret_val)).unwrap();
-        function
+        Ok(function)
     }
 
     pub fn emit_to_file(&self, path: &str) -> Result<(), String> {
