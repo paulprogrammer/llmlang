@@ -157,7 +157,7 @@ impl Expr {
             Expr::Float(_) => s.push_str("f"),
             Expr::String(_) => s.push_str("s"),
             Expr::Identifier(_) => s.push_str("v"),
-            Expr::DeBruijn(_) => s.push_str("^"),
+            Expr::DeBruijn(i) => s.push_str(&format!("^{}", i)),
             Expr::Expand(_) => s.push_str("!"),
             Expr::BinaryOp(op, l, r) => {
                 s.push_str(&format!("{:?}", op));
@@ -173,9 +173,8 @@ impl Expr {
                 t.collect_fingerprint(s);
                 f.collect_fingerprint(s);
             }
-            Expr::Apply(f, args) => {
-                s.push_str("@");
-                f.collect_fingerprint(s);
+            Expr::Apply(_, args) => {
+                s.push_str(&format!("@{}", args.len()));
                 for arg in args { arg.collect_fingerprint(s); }
             }
             Expr::Let(_, val, body) => {
@@ -186,8 +185,8 @@ impl Expr {
             Expr::Import(..) => s.push_str("I"),
             Expr::Seq(e1, e2) => { s.push_str("."); e1.collect_fingerprint(s); e2.collect_fingerprint(s); }
             Expr::Pack(e) => { s.push_str("📦"); e.collect_fingerprint(s); }
-            Expr::Unpack(e, shape) => { s.push_str(&format!("🎁{}", shape)); e.collect_fingerprint(s); }
-            Expr::Map(e, field, f) => { s.push_str(&format!("⟴{}", field)); e.collect_fingerprint(s); f.collect_fingerprint(s); }
+            Expr::Unpack(e, _) => { s.push_str("🎁"); e.collect_fingerprint(s); }
+            Expr::Map(e, _, f) => { s.push_str("⟴"); e.collect_fingerprint(s); f.collect_fingerprint(s); }
             Expr::Filter(e, f) => { s.push_str("▽"); e.collect_fingerprint(s); f.collect_fingerprint(s); }
             Expr::Shape(_, fields, _) => {
                 s.push_str("#");
