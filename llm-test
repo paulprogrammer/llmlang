@@ -24,6 +24,39 @@ if [ ${#TEST_FILES[@]} -eq 0 ]; then
     TEST_FILES=(tests/lang/*.llm)
 fi
 
+# Start background mock HTTP server for standard library testing
+python3 -c '
+from http.server import HTTPServer, BaseHTTPRequestHandler
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Hello from local mock server")
+    def do_POST(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Echo: " + body)
+server = HTTPServer(("127.0.0.1", 8080), Handler)
+server.serve_forever()
+' >/dev/null 2>&1 &
+MOCK_PID=$!
+
+cleanup() {
+    kill $MOCK_PID >/dev/null 2>&1
+    wait $MOCK_PID >/dev/null 2>&1
+    rm -f tests/lang/*.o tests/lang/*.llmi
+}
+trap cleanup EXIT
+
+# Wait a brief moment for the server to bind
+sleep 0.5
+
 echo "Running llmlang self-hosted tests..."
 echo "------------------------------------"
 

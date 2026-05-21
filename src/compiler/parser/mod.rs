@@ -10,6 +10,9 @@ pub struct FsSignatureResolver;
 
 impl SignatureResolver for FsSignatureResolver {
     fn resolve(&self, module: &str, import_paths: &[String], filename: &str) -> Result<String, String> {
+        if module == "http" {
+            return Ok(": get 1\n: post 2\n".to_string());
+        }
         use std::path::Path;
         let sig_filename = format!("{}.llmi", module);
         let mut found_path = None;

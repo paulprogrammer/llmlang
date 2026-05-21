@@ -10,6 +10,13 @@ impl Expr {
             Expr::Let(_, _, body) | Expr::Seq(_, body) => body.returns_ptr(),
             Expr::Move(e) | Expr::Borrow(e) | Expr::MutBorrow(e) => e.returns_ptr(),
             Expr::Trap(t, f) => t.returns_ptr() || f.returns_ptr(),
+            Expr::Apply(f, _) => {
+                if let Expr::Identifier(ref name) = **f {
+                    name == "http_get" || name == "http_post" || name == "get" || name == "post"
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     }

@@ -92,7 +92,7 @@ for c_file in "$RT_DIR"/*.c; do
 done
 
 # Call clang to link the object files including all runtime objects
-clang "${final_args[@]}" "$RT_OBJ_DIR"/*.o -lpthread
+clang "${final_args[@]}" "$RT_OBJ_DIR"/*.o -lpthread -lcurl
 LINK_RET=$?
 
 exit $LINK_RET
