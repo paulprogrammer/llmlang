@@ -25,15 +25,36 @@ jobs:
       run: |
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
-        # Attempt to install LLVM 22 (or the latest available if 22 isn't ready in the CI environment)
-        # Note: If LLVM 22 is too new for the runner, this script will find the closest version.
         sudo ./llvm.sh 22
         echo "LLVM_SYS_221_PREFIX=/usr/lib/llvm-22" >> $GITHUB_ENV
-        # Add llvm-config to path
         echo "/usr/lib/llvm-22/bin" >> $GITHUB_PATH
 
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y libclang-common-22-dev libpolly-22-dev libcurl4-openssl-dev libmbedtls-dev
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Run Rust tests
+      run: cargo test --verbose
+
+    - name: Run self-hosted lang tests
+      run: ./llm-test
+
+  macos-build:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install LLVM (macOS)
+      run: |
+        brew install llvm
+        echo "LLVM_SYS_221_PREFIX=$(brew --prefix llvm)" >> $GITHUB_ENV
+        echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
 
     - name: Build
       run: cargo build --verbose
