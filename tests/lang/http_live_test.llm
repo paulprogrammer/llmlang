@@ -14,8 +14,6 @@ I json get_obj
     L k_url "url"
     L k_form "form"
     L k_data "data"
-    L expected_url "https://httpbin.org/get"
-    L expected_data "llmlang live payload"
 
     // 1. GET request to httpbin
     L res_get @1 get ⚓ get_url
@@ -24,7 +22,7 @@ I json get_obj
     L root_get @1 parse ⚓ res_get
     . ? = root_get 0 🚨 "Failed to parse GET response" 0
     L val_url @2 get_str ⚓ root_get ⚓ k_url
-    . ? ≈ ⚓ val_url ⚓ expected_url 0 🚨 "GET response URL mismatch"
+    . ? ≈ ⚓ val_url "https://httpbin.org/get" 0 🚨 "GET response URL mismatch"
 
     // 2. POST request to httpbin
     L res_post @2 post ⚓ post_url ⚓ post_body
@@ -35,6 +33,6 @@ I json get_obj
     L form @2 get_obj ⚓ root_post ⚓ k_form
     . ? = form 0 🚨 "Failed to get form object" 0
     L val_data @2 get_str form ⚓ k_data
-    . ? ≈ ⚓ val_data ⚓ expected_data 0 🚨 "POST response data mismatch"
+    . ? ≈ ⚓ val_data "llmlang live payload" 0 🚨 "POST response data mismatch"
 
     0

@@ -113,23 +113,46 @@ impl<'ctx> CodeGen<'ctx> {
         let hash = hasher.finish();
         let global_name = format!("str_const_{:x}", hash);
 
+        let header_type = self.context.struct_type(&[
+            self.context.i32_type().into(),
+            self.context.i16_type().into(),
+            self.context.i16_type().into(),
+        ], false);
+
+        let struct_type = self.context.struct_type(&[
+            header_type.into(),
+            string_val.get_type().into(),
+        ], false);
+
         let global = if let Some(g) = self.module.get_global(&global_name) {
             g
         } else {
-            let g = self.module.add_global(string_val.get_type(), None, &global_name);
-            g.set_initializer(&string_val);
+            let magic_val = self.context.i32_type().const_int(0, false);
+            let type_val = self.context.i16_type().const_int(1, false); // RT_TYPE_STRING = 1
+            let ref_cnt_val = self.context.i16_type().const_int(1, false);
+
+            let header_val = header_type.const_named_struct(&[
+                magic_val.into(),
+                type_val.into(),
+                ref_cnt_val.into(),
+            ]);
+
+            let global_val = struct_type.const_named_struct(&[
+                header_val.into(),
+                string_val.into(),
+            ]);
+
+            let g = self.module.add_global(struct_type, None, &global_name);
+            g.set_initializer(&global_val);
             g.set_constant(true);
             g.set_linkage(inkwell::module::Linkage::LinkOnceODR);
             g
         };
 
         let ptr = global.as_pointer_value();
-        let ptr_int = self.builder.build_ptr_to_int(ptr, self.context.i64_type(), "str_ptr").unwrap();
-
-        let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
-        let func = self.get_or_add_external_fn("llm_strdup", fn_type);
-        let call = self.builder.build_call(func, &[ptr_int.into()], "str_heap").unwrap();
-        self.get_call_res(call)
+        let str_ptr = self.builder.build_struct_gep(struct_type, ptr, 1, "str_ptr").unwrap();
+        let ptr_int = self.builder.build_ptr_to_int(str_ptr, self.context.i64_type(), "str_ptr_int").unwrap();
+        ptr_int.into()
     }
 
     fn emit_auto_drop(&self, val: BasicValueEnum<'ctx>, shape: Option<&str>, is_ptr: bool) {
