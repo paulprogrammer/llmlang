@@ -52,7 +52,7 @@ jobs:
 
     - name: Install LLVM (macOS)
       run: |
-        brew install llvm mbedtls
+        brew install llvm mbedtls@3
         echo "LLVM_SYS_221_PREFIX=$(brew --prefix llvm)" >> $GITHUB_ENV
         echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
 

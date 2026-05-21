@@ -133,8 +133,8 @@ fi
 EXTRA_CFLAGS=""
 EXTRA_LDFLAGS=""
 if [ "$(uname -s)" = "Darwin" ]; then
-    EXTRA_CFLAGS="-I/opt/homebrew/include -I/usr/local/include"
-    EXTRA_LDFLAGS="-L/opt/homebrew/lib -L/usr/local/lib"
+    EXTRA_CFLAGS="-I/opt/homebrew/opt/mbedtls@3/include -I/usr/local/opt/mbedtls@3/include -I/opt/homebrew/include -I/usr/local/include"
+    EXTRA_LDFLAGS="-L/opt/homebrew/opt/mbedtls@3/lib -L/usr/local/opt/mbedtls@3/lib -L/opt/homebrew/lib -L/usr/local/lib"
 fi
 
 # Compile all C runtime files
