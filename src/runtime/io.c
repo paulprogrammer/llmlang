@@ -1,13 +1,12 @@
 #include "common.h"
 
 long llm_read(long handle) {
-    char* buffer = malloc(4096);
-    if (!fgets(buffer, 4096, fdopen((int)handle, "r"))) {
-        free(buffer);
+    char stack_buf[4096];
+    if (!fgets(stack_buf, sizeof(stack_buf), fdopen((int)handle, "r"))) {
         return 0;
     }
-    buffer[strcspn(buffer, "\n")] = 0;
-    return (long)buffer;
+    stack_buf[strcspn(stack_buf, "\n")] = 0;
+    return (long)llm_rt_strdup(stack_buf);
 }
 
 long llm_write(long handle, long s) {
@@ -18,10 +17,10 @@ long llm_write(long handle, long s) {
 
 long llm_getenv(long k) {
     char* key = (char*)k;
-    if (!key) return (long)strdup("");
+    if (!key) return (long)llm_rt_strdup("");
     char* val = getenv(key);
-    if (!val) return (long)strdup("");
-    return (long)strdup(val);
+    if (!val) return (long)llm_rt_strdup("");
+    return (long)llm_rt_strdup(val);
 }
 
 __thread llm_trap_frame_t* llm_trap_stack = NULL;
@@ -54,8 +53,6 @@ long llm_try(long (*body)(void*), void* arg, long (*fallback)(void*), void* farg
         llm_pop_trap();
         return res;
     } else {
-        // Upon longjmp, the stack has been unwound to this point.
-        // We need to pop the trap frame because it was never popped.
         llm_pop_trap();
         return fallback(farg);
     }

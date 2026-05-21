@@ -10,7 +10,7 @@ long llm_cat(long l, long r) {
     char* s2 = (char*)r;
     size_t len1 = s1 ? strlen(s1) : 0;
     size_t len2 = s2 ? strlen(s2) : 0;
-    char* res = malloc(len1 + len2 + 1);
+    char* res = llm_rt_alloc(len1 + len2 + 1, RT_TYPE_STRING);
     if (s1) strcpy(res, s1);
     else res[0] = '\0';
     if (s2) strcpy(res + len1, s2);
@@ -23,10 +23,10 @@ long llm_sub(long s, long start, long len) {
     if (!src) return 0;
     size_t src_len = strlen(src);
     if (start < 0) start = 0;
-    if (start >= src_len) return (long)strdup("");
+    if (start >= src_len) return (long)llm_rt_strdup("");
     if (len < 0) len = 0;
     if (start + len > src_len) len = src_len - start;
-    char* res = malloc(len + 1);
+    char* res = llm_rt_alloc(len + 1, RT_TYPE_STRING);
     strncpy(res, src + start, len);
     res[len] = '\0';
     return (long)res;
@@ -54,26 +54,26 @@ long llm_reg(long s, long r) {
 }
 
 long llm_itoa(long n) {
-    char* buffer = malloc(32);
+    char* buffer = llm_rt_alloc(32, RT_TYPE_STRING);
     sprintf(buffer, "%ld", n);
     return (long)buffer;
 }
 
 long llm_strdup(long s) {
     if (s == 0) return 0;
-    return (long)strdup((char*)s);
+    return (long)llm_rt_strdup((char*)s);
 }
 
 long llm_split(long s, long d, long index) {
     char* src = (char*)s;
     char* delim = (char*)d;
-    if (!src || !delim) return (long)strdup("");
+    if (!src || !delim) return (long)llm_rt_strdup("");
     char* copy = strdup(src);
     char* token = strtok(copy, delim);
     long current = 0;
     while (token != NULL) {
         if (current == index) {
-            char* res = strdup(token);
+            char* res = llm_rt_strdup(token);
             free(copy);
             return (long)res;
         }
@@ -81,7 +81,7 @@ long llm_split(long s, long d, long index) {
         current++;
     }
     free(copy);
-    return (long)strdup("");
+    return (long)llm_rt_strdup("");
 }
 
 long llm_money_format(long val) {
@@ -90,5 +90,5 @@ long llm_money_format(long val) {
     long frac = val % 10000;
     if (frac < 0) frac = -frac;
     sprintf(buf, "%ld.%04ld", whole, frac);
-    return (long)strdup(buf);
+    return (long)llm_rt_strdup(buf);
 }

@@ -22,16 +22,16 @@ static size_t write_callback(void* contents, size_t size, size_t nmemb, void* us
 
 long http_get(long url_ptr) {
     char* url = (char*)url_ptr;
-    if (!url) return (long)strdup("");
+    if (!url) return (long)llm_rt_strdup("");
 
     CURL* curl = curl_easy_init();
-    if (!curl) return (long)strdup("");
+    if (!curl) return (long)llm_rt_strdup("");
 
     struct ResponseBuffer chunk;
     chunk.data = malloc(1);
     if (!chunk.data) {
         curl_easy_cleanup(curl);
-        return (long)strdup("");
+        return (long)llm_rt_strdup("");
     }
     chunk.data[0] = '\0';
     chunk.size = 0;
@@ -48,25 +48,27 @@ long http_get(long url_ptr) {
 
     if (res != CURLE_OK) {
         free(chunk.data);
-        return (long)strdup("");
+        return (long)llm_rt_strdup("");
     }
 
-    return (long)chunk.data;
+    long managed_res = (long)llm_rt_strdup(chunk.data);
+    free(chunk.data);
+    return managed_res;
 }
 
 long http_post(long url_ptr, long body_ptr) {
     char* url = (char*)url_ptr;
     char* body = (char*)body_ptr;
-    if (!url) return (long)strdup("");
+    if (!url) return (long)llm_rt_strdup("");
 
     CURL* curl = curl_easy_init();
-    if (!curl) return (long)strdup("");
+    if (!curl) return (long)llm_rt_strdup("");
 
     struct ResponseBuffer chunk;
     chunk.data = malloc(1);
     if (!chunk.data) {
         curl_easy_cleanup(curl);
-        return (long)strdup("");
+        return (long)llm_rt_strdup("");
     }
     chunk.data[0] = '\0';
     chunk.size = 0;
@@ -91,8 +93,10 @@ long http_post(long url_ptr, long body_ptr) {
 
     if (res != CURLE_OK) {
         free(chunk.data);
-        return (long)strdup("");
+        return (long)llm_rt_strdup("");
     }
 
-    return (long)chunk.data;
+    long managed_res = (long)llm_rt_strdup(chunk.data);
+    free(chunk.data);
+    return managed_res;
 }

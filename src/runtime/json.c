@@ -1,9 +1,44 @@
 #include "common.h"
+#include "cJSON.h"
 
-// Simplified JSON for SoA: {"x": [1, 2], "y": [3, 4]}
+#define MAX_ACTIVE_ROOTS 256
+static __thread void* active_json_roots[MAX_ACTIVE_ROOTS];
+static __thread int active_json_roots_count = 0;
+
+void register_json_root(void* cell) {
+    if (active_json_roots_count < MAX_ACTIVE_ROOTS) {
+        active_json_roots[active_json_roots_count++] = cell;
+    }
+}
+
+void unregister_json_root(void* cell) {
+    for (int i = 0; i < active_json_roots_count; i++) {
+        if (active_json_roots[i] == cell) {
+            active_json_roots[i] = active_json_roots[--active_json_roots_count];
+            return;
+        }
+    }
+}
+
+static int is_json_root(long handle) {
+    for (int i = 0; i < active_json_roots_count; i++) {
+        if ((long)active_json_roots[i] == handle) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static cJSON* get_node(long handle) {
+    if (handle <= 1000) return NULL;
+    if (is_json_root(handle)) {
+        return *(cJSON**)handle;
+    }
+    return (cJSON*)handle;
+}
 
 long llm_pack(long* instance, const char* fields_csv) {
-    if (!instance || !fields_csv) return (long)strdup("{}");
+    if (!instance || !fields_csv) return (long)llm_rt_strdup("{}");
 
     long count = instance[0];
     char* fields = strdup(fields_csv);
@@ -15,28 +50,29 @@ long llm_pack(long* instance, const char* fields_csv) {
         token = strtok(NULL, ",");
     }
 
-    // Rough estimate for buffer size: 32 chars per number, 32 per field name, etc.
-    size_t buf_size = field_count * count * 32 + 1024;
-    char* res = malloc(buf_size);
-    char* p = res;
-
-    p += sprintf(p, "{");
+    cJSON* root = cJSON_CreateObject();
     for (int i = 0; i < field_count; i++) {
-        p += sprintf(p, "\"%s\": [", field_names[i]);
-        long* col = (long*)instance[i + 1]; // +1 because index 0 is count
+        cJSON* arr = cJSON_CreateArray();
+        long* col = (long*)instance[i + 1];
         for (long j = 0; j < count; j++) {
-            p += sprintf(p, "%ld%s", col[j], (j == count - 1) ? "" : ", ");
+            cJSON_AddItemToArray(arr, cJSON_CreateNumber((double)col[j]));
         }
-        p += sprintf(p, "]%s", (i == field_count - 1) ? "" : ", ");
+        cJSON_AddItemToObject(root, field_names[i], arr);
     }
-    sprintf(p, "}");
 
+    char* s = cJSON_PrintUnformatted(root);
+    long res = (long)llm_rt_strdup(s);
+    free(s);
+    cJSON_Delete(root);
     free(fields);
-    return (long)res;
+    return res;
 }
 
 long llm_unpack(const char* json, const char* fields_csv) {
     if (!json || !fields_csv) return 0;
+
+    cJSON* root = cJSON_Parse(json);
+    if (!root) return 0;
 
     char* fields = strdup(fields_csv);
     char* field_names[32];
@@ -47,39 +83,116 @@ long llm_unpack(const char* json, const char* fields_csv) {
         token = strtok(NULL, ",");
     }
 
-    // 1. Find count by counting commas in the first array
-    char* first_bracket = strchr(json, '[');
-    if (!first_bracket) { free(fields); return 0; }
     long count = 0;
-    const char* p = first_bracket + 1;
-    while (*p && *p != ']') {
-        if (*p == ',') count++;
-        p++;
+    if (field_count > 0) {
+        cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, field_names[0]);
+        if (cJSON_IsArray(arr)) {
+            count = cJSON_GetArraySize(arr);
+        }
     }
-    if (p > first_bracket + 1) count++; // One more than commas
 
-    // 2. Allocate SoA struct and columns (member 0 is count)
+    if (count <= 0) {
+        cJSON_Delete(root);
+        free(fields);
+        return 0;
+    }
+
     long* instance = malloc((field_count + 1) * sizeof(long));
     instance[0] = count;
     for (int i = 0; i < field_count; i++) {
         instance[i + 1] = (long)malloc(count * sizeof(long));
-    }
-
-    // 3. Parse fields (very naive)
-    for (int i = 0; i < field_count; i++) {
-        char search[64];
-        sprintf(search, "\"%s\": [", field_names[i]);
-        char* start = strstr(json, search);
-        if (start) {
-            start += strlen(search);
-            long* col = (long*)instance[i + 1];
+        cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, field_names[i]);
+        long* col = (long*)instance[i + 1];
+        if (cJSON_IsArray(arr)) {
             for (long j = 0; j < count; j++) {
-                col[j] = strtol(start, &start, 10);
-                while (*start == ',' || *start == ' ') start++;
+                cJSON* item = cJSON_GetArrayItem(arr, (int)j);
+                col[j] = cJSON_IsNumber(item) ? (long)item->valuedouble : 0;
+            }
+        } else {
+            for (long j = 0; j < count; j++) {
+                col[j] = 0;
             }
         }
     }
 
+    cJSON_Delete(root);
     free(fields);
     return (long)instance;
+}
+
+long json_parse(long str_ptr) {
+    char* json_str = (char*)str_ptr;
+    if (!json_str) return 0;
+    cJSON* root = cJSON_Parse(json_str);
+    if (!root) return 0;
+    cJSON** cell = llm_rt_alloc(sizeof(cJSON*), RT_TYPE_JSON);
+    *cell = root;
+    register_json_root(cell);
+    return (long)cell;
+}
+
+long json_stringify(long handle) {
+    cJSON* node = get_node(handle);
+    if (!node) return (long)llm_rt_strdup("");
+    char* s = cJSON_PrintUnformatted(node);
+    long res = (long)llm_rt_strdup(s);
+    free(s);
+    return res;
+}
+
+long json_get_int(long handle, long key_ptr) {
+    cJSON* node = get_node(handle);
+    if (!node || !key_ptr) return 0;
+    cJSON* item = cJSON_GetObjectItemCaseSensitive(node, (char*)key_ptr);
+    if (cJSON_IsNumber(item)) {
+        return (long)item->valuedouble;
+    }
+    return 0;
+}
+
+long json_get_float(long handle, long key_ptr) {
+    return json_get_int(handle, key_ptr);
+}
+
+long json_get_str(long handle, long key_ptr) {
+    cJSON* node = get_node(handle);
+    if (!node || !key_ptr) return (long)llm_rt_strdup("");
+    cJSON* item = cJSON_GetObjectItemCaseSensitive(node, (char*)key_ptr);
+    if (cJSON_IsString(item) && item->valuestring) {
+        return (long)llm_rt_strdup(item->valuestring);
+    }
+    return (long)llm_rt_strdup("");
+}
+
+long json_get_obj(long handle, long key_ptr) {
+    cJSON* node = get_node(handle);
+    if (!node || !key_ptr) return 0;
+    cJSON* item = cJSON_GetObjectItemCaseSensitive(node, (char*)key_ptr);
+    if (cJSON_IsObject(item)) {
+        return (long)item;
+    }
+    return 0;
+}
+
+long json_get_arr(long handle, long key_ptr) {
+    cJSON* node = get_node(handle);
+    if (!node || !key_ptr) return 0;
+    cJSON* item = cJSON_GetObjectItemCaseSensitive(node, (char*)key_ptr);
+    if (cJSON_IsArray(item)) {
+        return (long)item;
+    }
+    return 0;
+}
+
+long json_arr_len(long handle) {
+    cJSON* node = get_node(handle);
+    if (!node || !cJSON_IsArray(node)) return 0;
+    return (long)cJSON_GetArraySize(node);
+}
+
+long json_arr_get(long handle, long index) {
+    cJSON* node = get_node(handle);
+    if (!node || !cJSON_IsArray(node)) return 0;
+    cJSON* item = cJSON_GetArrayItem(node, (int)index);
+    return (long)item;
 }

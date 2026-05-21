@@ -1,12 +1,49 @@
 #include "common.h"
 
+void cJSON_Delete(void* c);
+
+void* llm_rt_alloc(size_t size, LlmRtType type) {
+    LlmRtHeader* header = malloc(sizeof(LlmRtHeader) + size);
+    if (!header) return NULL;
+    header->magic = 0x4C4C4D52;
+    header->type = type;
+    header->ref_cnt = 1;
+    return (void*)((char*)header + sizeof(LlmRtHeader));
+}
+
+char* llm_rt_strdup(const char* s) {
+    if (!s) return NULL;
+    size_t len = strlen(s);
+    char* copy = llm_rt_alloc(len + 1, RT_TYPE_STRING);
+    if (copy) {
+        strcpy(copy, s);
+    }
+    return copy;
+}
+
 void* llm_alloc(long size) {
     return malloc((size_t)size);
 }
 
 void llm_drop(long s) {
-    if (s > 1000) { 
-        free((void*)s);
+    if (s <= 1000) return;
+    LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
+    if (header->magic == 0x4C4C4D52) {
+        switch (header->type) {
+            case RT_TYPE_JSON: {
+                void** cell = (void**)s;
+                unregister_json_root(cell);
+                if (*cell) {
+                    cJSON_Delete(*cell);
+                }
+                break;
+            }
+            case RT_TYPE_STRING:
+            case RT_TYPE_RAW:
+            default:
+                break;
+        }
+        free(header);
     }
 }
 

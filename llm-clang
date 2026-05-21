@@ -31,6 +31,7 @@ processed_args=()
 compiler_args=()
 tmp_files=()
 compile_only=false
+debug_flags=""
 
 # Extract compiler-specific flags
 i=0
@@ -44,6 +45,10 @@ while [ $i -lt ${#args[@]} ]; do
             ;;
         -c)
             compile_only=true
+            ;;
+        -g)
+            debug_flags="-g"
+            processed_args+=("$arg")
             ;;
         *.llm)
             # Handled in the next loop
@@ -83,11 +88,28 @@ RT_DIR="$(dirname "$0")/src/runtime"
 RT_OBJ_DIR="$(dirname "$0")/target/runtime"
 mkdir -p "$RT_OBJ_DIR"
 
+# Check build mode to prevent linking stale object files
+build_mode="release"
+if [ -n "$debug_flags" ]; then
+    build_mode="debug"
+fi
+
+if [ -f "$RT_OBJ_DIR/.build_mode" ]; then
+    last_mode=$(cat "$RT_OBJ_DIR/.build_mode")
+else
+    last_mode=""
+fi
+
+if [ "$build_mode" != "$last_mode" ]; then
+    rm -f "$RT_OBJ_DIR"/*.o
+    echo "$build_mode" > "$RT_OBJ_DIR/.build_mode"
+fi
+
 # Compile all C runtime files
 for c_file in "$RT_DIR"/*.c; do
     obj_file="$RT_OBJ_DIR/$(basename "$c_file" .c).o"
     if [ "$c_file" -nt "$obj_file" ]; then
-        clang -c "$c_file" -o "$obj_file" -I"$RT_DIR"
+        clang $debug_flags -c "$c_file" -o "$obj_file" -I"$RT_DIR"
     fi
 done
 

@@ -12,7 +12,10 @@ impl Expr {
             Expr::Trap(t, f) => t.returns_ptr() || f.returns_ptr(),
             Expr::Apply(f, _) => {
                 if let Expr::Identifier(ref name) = **f {
-                    name == "http_get" || name == "http_post" || name == "get" || name == "post"
+                    name == "http_get" || name == "http_post" || name == "get" || name == "post" ||
+                    name == "json_parse" || name == "parse" ||
+                    name == "json_stringify" || name == "stringify" ||
+                    name == "json_get_str" || name == "get_str"
                 } else {
                     false
                 }

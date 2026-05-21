@@ -13,6 +13,9 @@ impl SignatureResolver for FsSignatureResolver {
         if module == "http" {
             return Ok(": get 1\n: post 2\n".to_string());
         }
+        if module == "json" {
+            return Ok(": parse 1\n: stringify 1\n: get_int 2\n: get_float 2\n: get_str 2\n: get_obj 2\n: get_arr 2\n: arr_len 1\n: arr_get 2\n".to_string());
+        }
         use std::path::Path;
         let sig_filename = format!("{}.llmi", module);
         let mut found_path = None;

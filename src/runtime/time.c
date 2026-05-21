@@ -12,7 +12,6 @@ long llm_tai_nano() {
     return (long)ts.tv_sec * 1000000000LL + (long)ts.tv_nsec;
 }
 
-// Correct Gregorian calendar math
 long llm_tai_get(long tai, long component) {
     long s = tai - TAI_OFFSET;
     struct tm tm;
@@ -43,7 +42,7 @@ long llm_tai_set(long y, long m, long d, long h, long mn, long s) {
 
 long llm_timezone() {
     char* tz = getenv("TZ");
-    if (tz) return (long)strdup(tz);
+    if (tz) return (long)llm_rt_strdup(tz);
 
     FILE* f = fopen("/etc/timezone", "r");
     if (f) {
@@ -51,7 +50,7 @@ long llm_timezone() {
         if (fgets(buf, sizeof(buf), f)) {
             buf[strcspn(buf, "\n")] = 0;
             fclose(f);
-            return (long)strdup(buf);
+            return (long)llm_rt_strdup(buf);
         }
         fclose(f);
     }
@@ -61,8 +60,8 @@ long llm_timezone() {
     if (len != -1) {
         link[len] = '\0';
         char* p = strstr(link, "zoneinfo/");
-        if (p) return (long)strdup(p + 9);
+        if (p) return (long)llm_rt_strdup(p + 9);
     }
 
-    return (long)strdup("UTC");
+    return (long)llm_rt_strdup("UTC");
 }
