@@ -29,12 +29,42 @@ void llm_drop(long s) {
     if (s <= 1000) return;
     LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
     if (header->magic == 0x4C4C4D52) {
+        header->magic = 0; // Prevent double drop!
         switch (header->type) {
             case RT_TYPE_JSON: {
                 void** cell = (void**)s;
                 unregister_json_root(cell);
                 if (*cell) {
                     cJSON_Delete(*cell);
+                }
+                break;
+            }
+            case RT_TYPE_SOCKET: {
+                int* sub_type = (int*)s;
+                if (*sub_type == 1) { // HttpServer
+                    HttpServer* server = (HttpServer*)s;
+                    if (server->fd >= 0) {
+                        close(server->fd);
+                        server->fd = -1;
+                    }
+                } else if (*sub_type == 2) { // HttpRequest
+                    HttpRequest* req = (HttpRequest*)s;
+                    if (req->client_fd >= 0) {
+                        close(req->client_fd);
+                        req->client_fd = -1;
+                    }
+                    if (req->method) {
+                        llm_drop((long)req->method);
+                        req->method = NULL;
+                    }
+                    if (req->path) {
+                        llm_drop((long)req->path);
+                        req->path = NULL;
+                    }
+                    if (req->body) {
+                        llm_drop((long)req->body);
+                        req->body = NULL;
+                    }
                 }
                 break;
             }

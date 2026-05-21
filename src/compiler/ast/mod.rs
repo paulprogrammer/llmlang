@@ -52,4 +52,6 @@ pub enum Expr {
     TimeZone,                               // 🕒🌍
     Panic(Box<Expr>),                       // 🚨 message
     Trap(Box<Expr>, Box<Expr>),             // 🛡️ try fallback
+    HttpClient(Box<Expr>, Box<Expr>, Box<Expr>), // 🌐 method url body
+    HttpServer(Box<Expr>, Box<Expr>),       // 🛰️ op_code arg
 }

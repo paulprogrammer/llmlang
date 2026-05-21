@@ -463,6 +463,19 @@ impl Parser {
                 self.consume()?;
                 Expr::Env(Box::new(self.parse_expr()?))
             }
+            Token::HttpClient => {
+                self.consume()?;
+                let method = self.parse_expr()?;
+                let url = self.parse_expr()?;
+                let body = self.parse_expr()?;
+                Expr::HttpClient(Box::new(method), Box::new(url), Box::new(body))
+            }
+            Token::HttpServer => {
+                self.consume()?;
+                let op = self.parse_expr()?;
+                let arg = self.parse_expr()?;
+                Expr::HttpServer(Box::new(op), Box::new(arg))
+            }
             Token::Dot => {
                 self.consume()?;
                 let e1 = self.parse_expr()?;

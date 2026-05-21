@@ -47,6 +47,8 @@ pub enum Token {
     TimeGet,   // 📅
     TimeSet,   // 📆
     Env,       // 🌍
+    HttpClient, // 🌐
+    HttpServer, // 🛰️
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -127,6 +129,8 @@ impl Lexer {
             '\u{1F4C5}' => Token::TimeGet,
             '\u{1F4C6}' => Token::TimeSet,
             '\u{1F30D}' => Token::Env,
+            '\u{1F310}' => Token::HttpClient,
+            '\u{1F6F0}' => Token::HttpServer,
             '"' => self.lex_string(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),

@@ -31,9 +31,28 @@ typedef struct {
     unsigned short ref_cnt;
 } LlmRtHeader;
 
+typedef struct {
+    int type; // 1 = HttpServer
+    int fd;
+} HttpServer;
+
+typedef struct {
+    int type; // 2 = HttpRequest
+    int client_fd;
+    char* method;
+    char* path;
+    char* body;
+} HttpRequest;
+
 void* llm_rt_alloc(size_t size, LlmRtType type);
 char* llm_rt_strdup(const char* s);
 void register_json_root(void* cell);
 void unregister_json_root(void* cell);
+void llm_drop(long s);
+
+long llm_http_client(long method, long url, long body);
+long llm_http_server(long op, long arg);
+long llm_http_server_accept(HttpServer* server);
+long llm_http_server_respond(HttpRequest* req, char* data_str);
 
 #endif

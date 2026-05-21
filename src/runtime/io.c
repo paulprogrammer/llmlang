@@ -1,6 +1,15 @@
 #include "common.h"
 
 long llm_read(long handle) {
+    if (handle > 1000) {
+        LlmRtHeader* header = (LlmRtHeader*)(handle - sizeof(LlmRtHeader));
+        if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_SOCKET) {
+            int* sub_type = (int*)handle;
+            if (*sub_type == 1) { // HttpServer
+                return llm_http_server_accept((HttpServer*)handle);
+            }
+        }
+    }
     char stack_buf[4096];
     if (!fgets(stack_buf, sizeof(stack_buf), fdopen((int)handle, "r"))) {
         return 0;
@@ -10,6 +19,15 @@ long llm_read(long handle) {
 }
 
 long llm_write(long handle, long s) {
+    if (handle > 1000) {
+        LlmRtHeader* header = (LlmRtHeader*)(handle - sizeof(LlmRtHeader));
+        if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_SOCKET) {
+            int* sub_type = (int*)handle;
+            if (*sub_type == 2) { // HttpRequest
+                return llm_http_server_respond((HttpRequest*)handle, (char*)s);
+            }
+        }
+    }
     char* src = (char*)s;
     if (!src) return 0;
     return (long)write((int)handle, src, strlen(src));

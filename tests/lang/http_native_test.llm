@@ -1,0 +1,12 @@
+// HTTP Native Client Test
+
+: main
+    L url_get "http://127.0.0.1:8080/get"
+    L res_get 🌐 "GET" ⚓ url_get ""
+    . ? ≈ ⚓ res_get "Hello.*" 0 🚨 "GET response mismatch"
+
+    L url_post "http://127.0.0.1:8080/post"
+    L body "Hello World"
+    L res_post 🌐 "POST" ⚓ url_post ⚓ body
+    . ? ≈ ⚓ res_post "Echo: Hello World" 0 🚨 "POST response mismatch"
+    0

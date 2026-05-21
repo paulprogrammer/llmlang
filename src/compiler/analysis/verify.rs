@@ -378,6 +378,15 @@ pub fn verify_expr(expr: &Expr, context: &mut VerificationContext) -> Result<(),
             verify_expr(l, context)?;
             verify_expr(r, context)
         }
+        Expr::HttpClient(method, url, body) => {
+            verify_expr(method, context)?;
+            verify_expr(url, context)?;
+            verify_expr(body, context)
+        }
+        Expr::HttpServer(op, arg) => {
+            verify_expr(op, context)?;
+            verify_expr(arg, context)
+        }
         Expr::Len(e) | Expr::Str(e) | Expr::Read(e) | Expr::Env(e) |
         Expr::MoneyStr(e) | Expr::Panic(e) => verify_expr(e, context),
         Expr::Define(_, _, body, _) => verify_expr(body, context),

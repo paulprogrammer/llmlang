@@ -7,6 +7,11 @@ impl Expr {
         match self {
             Expr::String(_) | Expr::New(_, _) | Expr::Unpack(_, _) | Expr::Map(_, _, _) | Expr::Filter(_, _) => true,
             Expr::Cat(_, _) | Expr::Sub(_, _, _) | Expr::Read(_) | Expr::Str(_) | Expr::Split(_, _, _) | Expr::Pack(_) | Expr::Env(_) | Expr::MoneyStr(_) | Expr::TimeZone => true,
+            Expr::HttpClient(_, _, _) => true,
+            Expr::HttpServer(op, _) => match &**op {
+                Expr::Integer(0) | Expr::Integer(1) | Expr::Integer(2) | Expr::Integer(3) => true,
+                _ => false,
+            },
             Expr::Let(_, _, body) | Expr::Seq(_, body) => body.returns_ptr(),
             Expr::Move(e) | Expr::Borrow(e) | Expr::MutBorrow(e) => e.returns_ptr(),
             Expr::Trap(t, f) => t.returns_ptr() || f.returns_ptr(),
@@ -34,7 +39,7 @@ impl Expr {
             Expr::Let(_, v, b) => v.is_pure() && b.is_pure(),
             Expr::New(_, c) => c.is_pure(),
             Expr::Get(i, _, idx) => i.is_pure() && idx.is_pure(),
-            Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) | Expr::TimeNow | Expr::TimeNano | Expr::Env(_) | Expr::Panic(_) | Expr::Trap(_, _) => false,
+            Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) | Expr::TimeNow | Expr::TimeNano | Expr::Env(_) | Expr::Panic(_) | Expr::Trap(_, _) | Expr::HttpClient(_, _, _) | Expr::HttpServer(_, _) => false,
             Expr::TimeGet(t, i) => t.is_pure() && i.is_pure(),
             Expr::TimeSet(y, m, d, h, mn, s) => y.is_pure() && m.is_pure() && d.is_pure() && h.is_pure() && mn.is_pure() && s.is_pure(),
             Expr::Pack(e) => e.is_pure(),
@@ -88,6 +93,8 @@ impl Expr {
             Expr::TimeZone => 5,
             Expr::Panic(e) => 10 + e.complexity(),
             Expr::Trap(t, f) => 20 + t.complexity() + f.complexity(),
+            Expr::HttpClient(method, url, body) => 10 + method.complexity() + url.complexity() + body.complexity(),
+            Expr::HttpServer(op, arg) => 10 + op.complexity() + arg.complexity(),
             Expr::Import(..) | Expr::Shape(_, _, _) => 1,
         }
     }
@@ -131,6 +138,8 @@ impl Expr {
                 val.collect_calls(calls);
             }
             Expr::Sub(s, b, l) | Expr::Split(s, b, l) => { s.collect_calls(calls); b.collect_calls(calls); l.collect_calls(calls); }
+            Expr::HttpClient(method, url, body) => { method.collect_calls(calls); url.collect_calls(calls); body.collect_calls(calls); }
+            Expr::HttpServer(op, arg) => { op.collect_calls(calls); arg.collect_calls(calls); }
             Expr::BinaryOp(_, l, r) | Expr::Seq(l, r) | Expr::TimeOp(_, l, r) | Expr::Loc(l, r) | Expr::Reg(l, r) | Expr::Write(l, r) | Expr::MoneyOp(_, l, r) => {
                 l.collect_calls(calls); r.collect_calls(calls);
             }
@@ -223,6 +232,17 @@ impl Expr {
                 s.push_str(":");
                 for _ in params { s.push_str("p"); }
                 body.collect_fingerprint(s);
+            }
+            Expr::HttpClient(method, url, body) => {
+                s.push_str("🌐");
+                method.collect_fingerprint(s);
+                url.collect_fingerprint(s);
+                body.collect_fingerprint(s);
+            }
+            Expr::HttpServer(op, arg) => {
+                s.push_str("🛰️");
+                op.collect_fingerprint(s);
+                arg.collect_fingerprint(s);
             }
             _ => s.push_str("?"),
         }

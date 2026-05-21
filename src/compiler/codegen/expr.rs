@@ -469,6 +469,30 @@ impl<'ctx> CodeGen<'ctx> {
                 let call = self.builder.build_call(func, &[k_val.into()], "getenv").unwrap();
                 self.get_call_res(call)
             }
+            Expr::HttpClient(method, url, body) => {
+                let method_val = self.gen_expr(method, stack, expand_map);
+                let url_val = self.gen_expr(url, stack, expand_map);
+                let body_val = self.gen_expr(body, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(),
+                ], false);
+                let func = self.get_or_add_external_fn("llm_http_client", fn_type);
+                let call = self.builder.build_call(func, &[method_val.into(), url_val.into(), body_val.into()], "http_client").unwrap();
+                self.get_call_res(call)
+            }
+            Expr::HttpServer(op, arg) => {
+                let op_val = self.gen_expr(op, stack, expand_map);
+                let arg_val = self.gen_expr(arg, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(),
+                ], false);
+                let func = self.get_or_add_external_fn("llm_http_server", fn_type);
+                let call = self.builder.build_call(func, &[op_val.into(), arg_val.into()], "http_server").unwrap();
+                self.get_call_res(call)
+            }
             Expr::Seq(e1, e2) => {
                 self.gen_expr(e1, stack, expand_map);
                 self.gen_expr(e2, stack, expand_map)

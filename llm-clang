@@ -113,8 +113,11 @@ for c_file in "$RT_DIR"/*.c; do
     fi
 done
 
-# Call clang to link the object files including all runtime objects
-clang "${final_args[@]}" "$RT_OBJ_DIR"/*.o -lpthread -lcurl
+# Package runtime objects into a static archive
+ar rcs "$RT_OBJ_DIR/libllm_rt.a" "$RT_OBJ_DIR"/*.o
+
+# Call clang to link the object files including the runtime static archive
+clang "${final_args[@]}" -L"$RT_OBJ_DIR" -lllm_rt -lpthread -lcurl
 LINK_RET=$?
 
 # Clean up transient intermediate object files
