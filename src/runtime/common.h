@@ -50,9 +50,11 @@ void register_json_root(void* cell);
 void unregister_json_root(void* cell);
 void llm_drop(long s);
 
-long llm_http_client(long method, long url, long body);
-long llm_http_server(long op, long arg);
-long llm_http_server_accept(HttpServer* server);
-long llm_http_server_respond(HttpRequest* req, char* data_str);
+__attribute__((weak)) long llm_http_client(long method, long url, long body);
+__attribute__((weak)) long llm_http_server(long op, long arg);
+__attribute__((weak)) long llm_http_server_accept(HttpServer* server);
+__attribute__((weak)) long llm_http_server_respond(HttpRequest* req, char* data_str);
+__attribute__((weak)) void llm_drop_json(long s);
+__attribute__((weak)) void llm_drop_socket(long s);
 
 #endif

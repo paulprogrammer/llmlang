@@ -1,7 +1,5 @@
 #include "common.h"
 
-void cJSON_Delete(void* c);
-
 void* llm_rt_alloc(size_t size, LlmRtType type) {
     LlmRtHeader* header = malloc(sizeof(LlmRtHeader) + size);
     if (!header) return NULL;
@@ -32,39 +30,14 @@ void llm_drop(long s) {
         header->magic = 0; // Prevent double drop!
         switch (header->type) {
             case RT_TYPE_JSON: {
-                void** cell = (void**)s;
-                unregister_json_root(cell);
-                if (*cell) {
-                    cJSON_Delete(*cell);
+                if (llm_drop_json) {
+                    llm_drop_json(s);
                 }
                 break;
             }
             case RT_TYPE_SOCKET: {
-                int* sub_type = (int*)s;
-                if (*sub_type == 1) { // HttpServer
-                    HttpServer* server = (HttpServer*)s;
-                    if (server->fd >= 0) {
-                        close(server->fd);
-                        server->fd = -1;
-                    }
-                } else if (*sub_type == 2) { // HttpRequest
-                    HttpRequest* req = (HttpRequest*)s;
-                    if (req->client_fd >= 0) {
-                        close(req->client_fd);
-                        req->client_fd = -1;
-                    }
-                    if (req->method) {
-                        llm_drop((long)req->method);
-                        req->method = NULL;
-                    }
-                    if (req->path) {
-                        llm_drop((long)req->path);
-                        req->path = NULL;
-                    }
-                    if (req->body) {
-                        llm_drop((long)req->body);
-                        req->body = NULL;
-                    }
+                if (llm_drop_socket) {
+                    llm_drop_socket(s);
                 }
                 break;
             }
@@ -76,6 +49,7 @@ void llm_drop(long s) {
         free(header);
     }
 }
+
 
 void llm_drop_soa(long* instance, long field_count) {
     if (!instance || (long)instance < 1000) return;

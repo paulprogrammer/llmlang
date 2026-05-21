@@ -6,7 +6,10 @@ long llm_read(long handle) {
         if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_SOCKET) {
             int* sub_type = (int*)handle;
             if (*sub_type == 1) { // HttpServer
-                return llm_http_server_accept((HttpServer*)handle);
+                if (llm_http_server_accept) {
+                    return llm_http_server_accept((HttpServer*)handle);
+                }
+                return 0;
             }
         }
     }
@@ -24,7 +27,10 @@ long llm_write(long handle, long s) {
         if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_SOCKET) {
             int* sub_type = (int*)handle;
             if (*sub_type == 2) { // HttpRequest
-                return llm_http_server_respond((HttpRequest*)handle, (char*)s);
+                if (llm_http_server_respond) {
+                    return llm_http_server_respond((HttpRequest*)handle, (char*)s);
+                }
+                return 0;
             }
         }
     }

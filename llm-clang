@@ -32,8 +32,10 @@ compiler_args=()
 tmp_files=()
 compile_only=false
 debug_flags=""
+output_file=""
+llm_files=()
 
-# Extract compiler-specific flags
+# Extract compiler-specific flags and inputs
 i=0
 while [ $i -lt ${#args[@]} ]; do
     arg="${args[$i]}"
@@ -46,13 +48,16 @@ while [ $i -lt ${#args[@]} ]; do
         -c)
             compile_only=true
             ;;
+        -o)
+            i=$((i + 1))
+            output_file="${args[$i]}"
+            ;;
         -g)
             debug_flags="-g"
             processed_args+=("$arg")
             ;;
         *.llm)
-            # Handled in the next loop
-            processed_args+=("$arg")
+            llm_files+=("$arg")
             ;;
         *)
             processed_args+=("$arg")
@@ -61,26 +66,45 @@ while [ $i -lt ${#args[@]} ]; do
     i=$((i + 1))
 done
 
-# We need to re-process because of the weird way clang-wrapper works
+if [ "$compile_only" = true ]; then
+    if [ ${#llm_files[@]} -eq 1 ] && [ -n "$output_file" ]; then
+        # Single file compilation with explicit output object name
+        "$LLMLANG_BIN" "${llm_files[0]}" "${compiler_args[@]}" -o "$output_file"
+        exit $?
+    else
+        # Multiple files or default output names
+        for llm_file in "${llm_files[@]}"; do
+            obj="${llm_file%.llm}.o"
+            "$LLMLANG_BIN" "$llm_file" "${compiler_args[@]}" -o "$obj"
+            if [ $? -ne 0 ]; then
+                exit 1
+            fi
+        done
+        exit 0
+    fi
+fi
+
+# Build final arguments list for the linking stage
 final_args=()
 for arg in "${processed_args[@]}"; do
-    if [[ "$arg" == *.llm ]]; then
-        # Create a temporary object file
-        obj="${arg%.llm}.o"
-        "$LLMLANG_BIN" "$arg" "${compiler_args[@]}" -o "$obj"
-        if [ $? -ne 0 ]; then
-            echo "Error: llmlang failed to compile $arg"
-            exit 1
-        fi
-        final_args+=("$obj")
-        tmp_files+=("$obj")
-    else
-        final_args+=("$arg")
-    fi
+    final_args+=("$arg")
 done
 
-if [ "$compile_only" = true ]; then
-    exit 0
+# Compile LLM files to temporary object files for linking
+for llm_file in "${llm_files[@]}"; do
+    obj="${llm_file%.llm}.o"
+    "$LLMLANG_BIN" "$llm_file" "${compiler_args[@]}" -o "$obj"
+    if [ $? -ne 0 ]; then
+        echo "Error: llmlang failed to compile $llm_file"
+        exit 1
+    fi
+    final_args+=("$obj")
+    tmp_files+=("$obj")
+done
+
+# Pass the output file target to clang if specified
+if [ -n "$output_file" ]; then
+    final_args+=("-o" "$output_file")
 fi
 
 # Path to the runtime
@@ -117,7 +141,7 @@ done
 ar rcs "$RT_OBJ_DIR/libllm_rt.a" "$RT_OBJ_DIR"/*.o
 
 # Call clang to link the object files including the runtime static archive
-clang "${final_args[@]}" -L"$RT_OBJ_DIR" -lllm_rt -lpthread -lcurl
+clang "${final_args[@]}" -L"$RT_OBJ_DIR" -lllm_rt -Wl,--as-needed -lpthread -lcurl -Wl,--no-as-needed
 LINK_RET=$?
 
 # Clean up transient intermediate object files

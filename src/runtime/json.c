@@ -20,6 +20,14 @@ void unregister_json_root(void* cell) {
     }
 }
 
+void llm_drop_json(long s) {
+    void** cell = (void**)s;
+    unregister_json_root(cell);
+    if (*cell) {
+        cJSON_Delete(*cell);
+    }
+}
+
 static int is_json_root(long handle) {
     for (int i = 0; i < active_json_roots_count; i++) {
         if ((long)active_json_roots[i] == handle) {
