@@ -129,11 +129,20 @@ if [ "$build_mode" != "$last_mode" ]; then
     echo "$build_mode" > "$RT_OBJ_DIR/.build_mode"
 fi
 
+# Determine extra flags for macOS (Homebrew prefixes)
+EXTRA_CFLAGS=""
+EXTRA_LDFLAGS=""
+if [ "$(uname -s)" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
+    BREW_PREFIX=$(brew --prefix)
+    EXTRA_CFLAGS="-I$BREW_PREFIX/include"
+    EXTRA_LDFLAGS="-L$BREW_PREFIX/lib"
+fi
+
 # Compile all C runtime files
 for c_file in "$RT_DIR"/*.c; do
     obj_file="$RT_OBJ_DIR/$(basename "$c_file" .c).o"
     if [ "$c_file" -nt "$obj_file" ]; then
-        clang $debug_flags -fPIC -c "$c_file" -o "$obj_file" -I"$RT_DIR"
+        clang $debug_flags -fPIC -c "$c_file" -o "$obj_file" -I"$RT_DIR" $EXTRA_CFLAGS
     fi
 done
 
@@ -142,9 +151,9 @@ ar rcs "$RT_OBJ_DIR/libllm_rt.a" "$RT_OBJ_DIR"/*.o
 
 # Call clang to link the object files including the runtime static archive
 if [ "$(uname -s)" = "Darwin" ]; then
-    clang "${final_args[@]}" -L"$RT_OBJ_DIR" -lllm_rt -lpthread -lcurl -lcurl -lmbedtls -lmbedx509 -lmbedcrypto
+    clang "${final_args[@]}" -L"$RT_OBJ_DIR" -lllm_rt -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto $EXTRA_LDFLAGS
 else
-    clang "${final_args[@]}" -L"$RT_OBJ_DIR" -lllm_rt -Wl,--as-needed -lpthread -lcurl -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -Wl,--no-as-needed
+    clang "${final_args[@]}" -L"$RT_OBJ_DIR" -lllm_rt -Wl,--as-needed -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -Wl,--no-as-needed
 fi
 LINK_RET=$?
 
