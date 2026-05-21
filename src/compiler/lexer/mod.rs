@@ -5,14 +5,14 @@ pub enum Token {
     Sub,       // -
     Mul,       // *
     Div,       // /
-    Move,      // ⮞
-    Borrow,    // ⚓
+    Move,      // >
+    Borrow,    // $
     MutBorrow, // ~
     Define,    // :
     Shape,     // #
     DeBruijn(usize), // ^0, ^1
     Question,  // ?
-    Bang,      // !
+    Bang,      // `
     New,       // N
     Get,       // G
     Set,       // S
@@ -20,28 +20,28 @@ pub enum Token {
     Let,       // L
     Import,    // I
     Eq,        // =
-    Lt,        // <
-    Gt,        // >
+    Lt,        // lt
+    Gt,        // gt
     Dot,       // .
     BitAnd,    // &
     BitOr,     // |
-    BitXor,    // ^
+    BitXor,    // xor
     String(String),
-    Len,       // ℓ
-    Cat,       // ⧉
-    StrSub,    // ✂
-    Loc,       // 🔍
-    Reg,       // ≈
-    Read,      // 📥
-    Write,     // 📤
-    Str,       // 🧵
-    Split,     // 🪓
-    Pack(usize), // 📦
-    Map,       // ⟴
-    Filter,    // ▽
-    Money,     // 💰
-    Panic,     // 🚨
-    Trap,      // 🛡️
+    Len,       // sl
+    Cat,       // sc
+    StrSub,    // ss
+    Loc,       // sf
+    Reg,       // sr
+    Read,      // (
+    Write,     // )
+    Str,       // str
+    Split,     // sp
+    Pack(usize), // jp (Pack/Unpack)
+    Map,       // map
+    Filter,    // flt
+    Money,     // %
+    Panic,     // !
+    Trap,      // ^
     TimeNow,   // tn
     TimeNano,  // tns
     TimeZone,  // tz

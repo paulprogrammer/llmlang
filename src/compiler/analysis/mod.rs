@@ -185,8 +185,8 @@ impl Expr {
                 l.collect_fingerprint(s);
                 r.collect_fingerprint(s);
             }
-            Expr::Move(e) => { s.push_str("⮞"); e.collect_fingerprint(s); }
-            Expr::Borrow(e) => { s.push_str("⚓"); e.collect_fingerprint(s); }
+            Expr::Move(e) => { s.push_str(">"); e.collect_fingerprint(s); }
+            Expr::Borrow(e) => { s.push_str("$"); e.collect_fingerprint(s); }
             Expr::MutBorrow(e) => { s.push_str("~"); e.collect_fingerprint(s); }
             Expr::If(c, t, f) => {
                 s.push_str("?");
@@ -205,10 +205,10 @@ impl Expr {
             }
             Expr::Import(..) => s.push_str("I"),
             Expr::Seq(e1, e2) => { s.push_str("."); e1.collect_fingerprint(s); e2.collect_fingerprint(s); }
-            Expr::Pack(e) => { s.push_str("📦"); e.collect_fingerprint(s); }
-            Expr::Unpack(e, _) => { s.push_str("🎁"); e.collect_fingerprint(s); }
-            Expr::Map(e, _, f) => { s.push_str("⟴"); e.collect_fingerprint(s); f.collect_fingerprint(s); }
-            Expr::Filter(e, f) => { s.push_str("▽"); e.collect_fingerprint(s); f.collect_fingerprint(s); }
+            Expr::Pack(e) => { s.push_str("jp"); e.collect_fingerprint(s); }
+            Expr::Unpack(e, _) => { s.push_str("ju"); e.collect_fingerprint(s); }
+            Expr::Map(e, _, f) => { s.push_str("map"); e.collect_fingerprint(s); f.collect_fingerprint(s); }
+            Expr::Filter(e, f) => { s.push_str("flt"); e.collect_fingerprint(s); f.collect_fingerprint(s); }
             Expr::Shape(_, fields, _) => {
                 s.push_str("#");
                 for _ in fields { s.push_str("t"); }
@@ -234,13 +234,13 @@ impl Expr {
                 body.collect_fingerprint(s);
             }
             Expr::HttpClient(method, url, body) => {
-                s.push_str("🌐");
+                s.push_str("http");
                 method.collect_fingerprint(s);
                 url.collect_fingerprint(s);
                 body.collect_fingerprint(s);
             }
             Expr::HttpServer(op, arg) => {
-                s.push_str("🛰️");
+                s.push_str("srv");
                 op.collect_fingerprint(s);
                 arg.collect_fingerprint(s);
             }

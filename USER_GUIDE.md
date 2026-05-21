@@ -59,16 +59,16 @@ You can also use a JSON file for configuration. Flags provided on the CLI will o
 
 `llmlang` uses a high-precision temporal model inspired by D.J. Bernstein's `libtai`. It distinguishes between **TAI64 labels** (atomic time) and **Calendar Time**.
 
-*   **Atomic Now (`🕒`):** Returns the current TAI64 label as an `i64`.
-*   **Get Component (`📅 T i`):** Decomposes a label into human-readable parts (0=Y, 1=M, 2=D, 3=H, 4=m, 5=S).
-*   **Set Label (`📆 Y M D H m S`):** Composes a TAI64 label from calendar parts.
+*   **Atomic Now (`tn`):** Returns the current TAI64 label as an `i64`.
+*   **Get Component (`tg T i`):** Decomposes a label into human-readable parts (0=Y, 1=M, 2=D, 3=H, 4=m, 5=S).
+*   **Set Label (`ts Y M D H m S`):** Composes a TAI64 label from calendar parts.
 
 Example:
 ```llm
 : main
-    L now 🕒
-    L year 📅 ⚓ now 0
-    📤 1 ⧉ "Current Year: " 🧵 ⮞ year
+    L now tn
+    L year tg $ now 0
+    ) 1 sc "Current Year: " str > year
 ```
 
 ## 4. Cross-Module Imports (`.llmi`)
@@ -80,7 +80,7 @@ When you compile a module with an output path, `llmlang` automatically generates
 
 1.  **Define Library (`math.llm`):**
     ```llm
-    X : add x y + ⚓ x ⚓ y
+    X : add x y + $ x $ y
     ```
 2.  **Compile Library:**
     ```bash
@@ -110,8 +110,8 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
 | **Export** | `X ...` | Mark a definition for external consumption. |
 | **Apply** | `@<n> func args` | Call a function with `<n>` arguments (defaults to 1). |
 | **Branch** | `? cond t f` | Conditional branch (phi-merge). |
-| **Move** | `⮞ ^index` | Consume a variable (Linear Ownership). |
-| **Borrow** | `⚓ ^index` | Read a variable without consuming. |
+| **Move** | `> ^index` | Consume a variable (Linear Ownership). |
+| **Borrow** | `$ ^index` | Read a variable without consuming. |
 | **De Bruijn** | `^0`, `^1` | Reference variables by scope depth. |
 | **Shape** | `# Name i64 ...` | Define a Struct of Arrays memory layout. |
 | **New** | `N Name count` | Allocate a new SoA instance. |
@@ -119,46 +119,48 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
 | **Set** | `S instance f idx v`| Store value to SoA column. |
 | **Let** | `L name val body` | Create a local binding. |
 | **Import** | `I mod symbol` | Import external symbol. |
-| **Compare** | `=`, `<`, `>` | Compare two values (returns 0 or 1). |
-| **Bitwise** | `&`, `|`, `^` | Bitwise AND, OR, XOR. |
+| **Compare** | `=`, `lt`, `gt` | Compare two values (returns 0 or 1). `<` can also be used for `lt`. |
+| **Bitwise** | `&`, `\|`, `xor` | Bitwise AND, OR, XOR. |
 | **String** | `"text"` | String literal. |
-| **Len** | `ℓ str` | Get string length. |
-| **Concat** | `⧉ s1 s2` | Concatenate two strings. |
-| **Sub** | `✂ s start len` | Extract substring. |
-| **Loc** | `🔍 s pat` | Find index of pattern in string. |
-| **Regex** | `≈ s regex` | Match string against regex. |
-| **System** | `📥 h`, `📤 h s` | Read/Write to/from file handles. |
-| **Stringify**| `🧵 i64` | Convert integer to string. |
-| **Split** | `🪓 s d idx` | Extract segment by delimiter. |
-| **JSON** | `📦 inst`, `📦2 json "Shape"` | Serialize to/Deserialize from JSON. |
-| **Map** | `⟴ inst "f" func` | Map function over SoA column. |
-| **Filter** | `▽ inst func` | Filter SoA instance by predicate. |
-| **Money** | `💰+`, `💰-`, `💰*`, `💰/` | Fixed-point precision math. |
-| **MoneyStr**| `💰🧵 money` | Format money value to string. |
-| **Panic** | `🚨 message` | Abort execution with error message. |
-| **Trap**  | `🛡️ try fall` | Catch panic and run fallback. |
-| **Time**  | `🕒`, `📅`, `📆` | TAI64 and Calendar primitives. |
-| **TimeNano**| `🕒⌛` | High-resolution monotonic time (nanoseconds). |
-| **TimeZone**| `🕒🌍` | Get local timezone name. |
-| **Env** | `🌍 key` | Access system environment variables. |
+| **Len** | `sl str` | Get string length. |
+| **Concat** | `sc s1 s2` | Concatenate two strings. |
+| **Sub** | `ss s start len` | Extract substring. |
+| **Loc** | `sf s pat` | Find index of pattern in string. |
+| **Regex** | `sr s regex` | Match string against regex. |
+| **System** | `( h`, `) h s` | Read/Write to/from file handles. |
+| **Stringify**| `str i64` | Convert integer to string. |
+| **Split** | `sp s d idx` | Extract segment by delimiter. |
+| **JSON** | `jp inst`, `ju json "Shape"` | Serialize to/Deserialize from JSON. |
+| **Map** | `map inst "f" func` | Map function over SoA column. |
+| **Filter** | `flt inst func` | Filter SoA instance by predicate. |
+| **Money** | `%+`, `%-`, `%*`, `%/` | Fixed-point precision math. |
+| **MoneyStr**| `%str money` | Format money value to string. |
+| **Panic** | `! message` | Abort execution with error message (also maps to ``` ` ```). |
+| **Trap**  | `^ try fall` | Catch panic and run fallback (when not a De Bruijn index). |
+| **Time**  | `tn`, `tg`, `ts` | TAI64 and Calendar primitives. |
+| **TimeNano**| `tns` | High-resolution monotonic time (nanoseconds). |
+| **TimeZone**| `tz` | Get local timezone name. |
+| **Env** | `env key` | Access system environment variables. |
+| **HTTP Client**| `http method url body` | Make an HTTP request. |
+| **HTTP Server**| `srv op arg` | HTTP server socket manager operations. |
 | **Sequence** | `. e1 e2` | Evaluate e1 then e2, returning e2. |
 
 ## 6. Business Logic Example
 
 ```llm
-# Invoice id i64 amount i64
+# Invoice id amount
 
 : process_tax inv
-    💰* ⚓ inv 💰1.15  // 15% Tax
+    %* $ inv %1.15  // 15% Tax
 
 : main
     L i N Invoice 1
-    . S ⚓ i id 101
-    . S ⚓ i amount 💰1000.00
-    L taxed ⟴ ⮞ i "amount" process_tax
-    L total ⚓ taxed amount 0
-    L msg ⧉ "Total with Tax: " 💰🧵 ⮞ total
-    . 📤 1 ⮞ msg
+    . S $ i id 0 101
+    . S $ i amount 0 %1000.00
+    L taxed map > i "amount" process_tax
+    L total G $ taxed amount 0
+    L msg sc "Total with Tax: " %str > total
+    . ) 1 > msg
     0
 ```
 
