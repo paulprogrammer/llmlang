@@ -1,0 +1,40 @@
+// Live HTTP and JSON Integration Test
+
+I http get
+I http post
+I json parse
+I json get_str
+I json get_obj
+
+: main
+    // Bind constant strings to ensure zero memory leaks under auto-drop
+    L get_url "https://httpbin.org/get"
+    L post_url "https://httpbin.org/post"
+    L post_body "data=llmlang live payload"
+    L k_url "url"
+    L k_form "form"
+    L k_data "data"
+    L expected_url "https://httpbin.org/get"
+    L expected_data "llmlang live payload"
+
+    // 1. GET request to httpbin
+    L res_get @1 get ⚓ get_url
+
+    // Parse GET response and verify URL field
+    L root_get @1 parse ⚓ res_get
+    . ? = root_get 0 🚨 "Failed to parse GET response" 0
+    L val_url @2 get_str ⚓ root_get ⚓ k_url
+    . ? ≈ ⚓ val_url ⚓ expected_url 0 🚨 "GET response URL mismatch"
+
+    // 2. POST request to httpbin
+    L res_post @2 post ⚓ post_url ⚓ post_body
+
+    // Parse POST response and verify form field
+    L root_post @1 parse ⚓ res_post
+    . ? = root_post 0 🚨 "Failed to parse POST response" 0
+    L form @2 get_obj ⚓ root_post ⚓ k_form
+    . ? = form 0 🚨 "Failed to get form object" 0
+    L val_data @2 get_str form ⚓ k_data
+    . ? ≈ ⚓ val_data ⚓ expected_data 0 🚨 "POST response data mismatch"
+
+    0
