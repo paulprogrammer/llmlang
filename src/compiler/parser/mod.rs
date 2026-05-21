@@ -16,6 +16,9 @@ impl SignatureResolver for FsSignatureResolver {
         if module == "json" {
             return Ok(": parse 1\n: stringify 1\n: get_int 2\n: get_float 2\n: get_str 2\n: get_obj 2\n: get_arr 2\n: arr_len 1\n: arr_get 2\n".to_string());
         }
+        if module == "file" {
+            return Ok(": open 2\n: close 1\n".to_string());
+        }
         use std::path::Path;
         let sig_filename = format!("{}.llmi", module);
         let mut found_path = None;
@@ -214,6 +217,9 @@ impl Parser {
                     let val = self.parse_expr()?;
                     self.add_variable(name.clone());
                     let body = self.parse_expr()?;
+                    if let Some(scope) = self.scopes.last_mut() {
+                        scope.pop();
+                    }
                     Expr::Let(name, Box::new(val), Box::new(body))
                 } else {
                     return Err(self.error("E002"));
@@ -467,6 +473,12 @@ impl Parser {
             Token::Env => {
                 self.consume()?;
                 Expr::Env(Box::new(self.parse_expr()?))
+            }
+            Token::FileOpen => {
+                self.consume()?;
+                let path = self.parse_expr()?;
+                let mode = self.parse_expr()?;
+                Expr::FileOpen(Box::new(path), Box::new(mode))
             }
             Token::HttpClient => {
                 self.consume()?;

@@ -493,6 +493,17 @@ impl<'ctx> CodeGen<'ctx> {
                 let call = self.builder.build_call(func, &[op_val.into(), arg_val.into()], "http_server").unwrap();
                 self.get_call_res(call)
             }
+            Expr::FileOpen(path, mode) => {
+                let path_val = self.gen_expr(path, stack, expand_map);
+                let mode_val = self.gen_expr(mode, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(),
+                ], false);
+                let func = self.get_or_add_external_fn("llm_file_open", fn_type);
+                let call = self.builder.build_call(func, &[path_val.into(), mode_val.into()], "file_open").unwrap();
+                self.get_call_res(call)
+            }
             Expr::Seq(e1, e2) => {
                 self.gen_expr(e1, stack, expand_map);
                 self.gen_expr(e2, stack, expand_map)

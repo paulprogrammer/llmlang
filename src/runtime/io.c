@@ -12,6 +12,15 @@ long llm_read(long handle) {
                 return 0;
             }
         }
+        if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_FILE) {
+            LlmFile* lf = (LlmFile*)handle;
+            char stack_buf[4096];
+            if (!fgets(stack_buf, sizeof(stack_buf), lf->fp)) {
+                return 0;
+            }
+            stack_buf[strcspn(stack_buf, "\n")] = 0;
+            return (long)llm_rt_strdup(stack_buf);
+        }
     }
     char stack_buf[4096];
     if (!fgets(stack_buf, sizeof(stack_buf), fdopen((int)handle, "r"))) {
@@ -32,6 +41,14 @@ long llm_write(long handle, long s) {
                 }
                 return 0;
             }
+        }
+        if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_FILE) {
+            LlmFile* lf = (LlmFile*)handle;
+            char* src = (char*)s;
+            if (!src) return 0;
+            size_t len = strlen(src);
+            size_t written = fwrite(src, 1, len, lf->fp);
+            return (long)written;
         }
     }
     char* src = (char*)s;

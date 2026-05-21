@@ -22,7 +22,8 @@ typedef enum {
     RT_TYPE_STRING = 1,
     RT_TYPE_JSON = 2,
     RT_TYPE_SOCKET = 3,
-    RT_TYPE_DB = 4
+    RT_TYPE_DB = 4,
+    RT_TYPE_FILE = 5
 } LlmRtType;
 
 typedef struct {
@@ -55,6 +56,13 @@ __attribute__((weak)) long llm_http_server(long op, long arg);
 __attribute__((weak)) long llm_http_server_accept(HttpServer* server);
 __attribute__((weak)) long llm_http_server_respond(HttpRequest* req, char* data_str);
 __attribute__((weak)) void llm_drop_json(long s);
+typedef struct {
+    FILE* fp;
+} LlmFile;
+
+__attribute__((weak)) long llm_file_open(long path, long mode);
+__attribute__((weak)) long file_open(long path, long mode);
+__attribute__((weak)) long file_close(long handle);
 __attribute__((weak)) void llm_drop_socket(long s);
 
 #endif

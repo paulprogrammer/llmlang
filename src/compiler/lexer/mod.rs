@@ -50,6 +50,7 @@ pub enum Token {
     Env,       // env
     HttpClient, // http
     HttpServer, // srv
+    FileOpen,   // fo
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -175,6 +176,7 @@ impl Lexer {
             "http" => Token::HttpClient,
             "srv" => Token::HttpServer,
             "env" => Token::Env,
+            "fo" => Token::FileOpen,
             "jp" => Token::Pack(1),
             "ju" => Token::Pack(2),
             "sl" => Token::Len,

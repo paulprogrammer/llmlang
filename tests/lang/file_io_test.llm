@@ -1,0 +1,25 @@
+// File I/O Integration Test
+I file open
+I file close
+
+: main
+    L path "test_file.txt"
+    . L wh fo $ path "w"
+        . ) $ wh "Hello File I/O\n"
+        0
+    L rh fo $ path "r"
+    L content ( $ rh
+    . ? sr $ content "^Hello File I/O$"
+        0
+        ! "File read mismatch 1"
+    . L wh2 @2 open $ path "w"
+        . ) $ wh2 "Hello File I/O 2\n"
+        // Move wh2 into close to explicitly consume/close it
+        . @1 close > wh2
+        0
+    L rh2 fo $ path "r"
+    L content2 ( $ rh2
+    . ? sr $ content2 "^Hello File I/O 2$"
+        0
+        ! "File read mismatch 2"
+    0

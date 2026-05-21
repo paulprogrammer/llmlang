@@ -41,6 +41,14 @@ void llm_drop(long s) {
                 }
                 break;
             }
+            case RT_TYPE_FILE: {
+                LlmFile* lf = (LlmFile*)s;
+                if (lf->fp) {
+                    fclose(lf->fp);
+                    lf->fp = NULL;
+                }
+                break;
+            }
             case RT_TYPE_STRING:
             case RT_TYPE_RAW:
             default:
