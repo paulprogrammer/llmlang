@@ -31,6 +31,10 @@ jobs:
             arch: arm64
             runner: ubuntu-24.04-arm
             artifact_name: llmlang-linux-arm64
+          - os: alpine
+            arch: x86_64
+            runner: ubuntu-latest
+            artifact_name: llmlang-alpine-x86_64
 
     steps:
     - uses: actions/checkout@v4
@@ -58,14 +62,38 @@ jobs:
       if: matrix.os == 'linux'
       run: sudo apt-get update && sudo apt-get install -y libclang-common-22-dev libpolly-22-dev libcurl4-openssl-dev
 
-    - name: Build release binaries
+    - name: Build release binaries (Host)
+      if: matrix.os != 'alpine'
       run: cargo build --release --verbose
 
-    - name: Run tests (Rust)
+    - name: Build release binaries (Alpine)
+      if: matrix.os == 'alpine'
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace alpine:edge sh -c "
+          apk add --no-cache rust cargo llvm22-dev clang-dev clang musl-dev curl-dev bash zstd-dev libffi-dev gcc g++ make git &&
+          export PATH=\"/usr/lib/llvm22/bin:\$PATH\" &&
+          export LLVM_SYS_221_PREFIX=\"/usr/lib/llvm22\" &&
+          cargo build --release --verbose
+        "
+
+    - name: Run tests (Rust) (Host)
+      if: matrix.os != 'alpine'
       run: cargo test --release --verbose
 
-    - name: Run tests (Self-hosted)
+    - name: Run tests (Self-hosted) (Host)
+      if: matrix.os != 'alpine'
       run: ./llm-test
+
+    - name: Run tests (Alpine)
+      if: matrix.os == 'alpine'
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace alpine:edge sh -c "
+          apk add --no-cache rust cargo llvm22-dev clang-dev clang musl-dev curl-dev bash zstd-dev libffi-dev gcc g++ make git python3 &&
+          export PATH=\"/usr/lib/llvm22/bin:\$PATH\" &&
+          export LLVM_SYS_221_PREFIX=\"/usr/lib/llvm22\" &&
+          cargo test --release --verbose &&
+          ./llm-test
+        "
 
     - name: Prepare assets
       run: |
