@@ -24,3 +24,10 @@ path = "src/main.rs"
 [[bin]]
 name = "llm-mcp"
 path = "src/bin/mcp_server.rs"
+
+[profile.release]
+opt-level = "z"      # Optimize for size
+lto = true           # Enable Link-Time Optimization (LTO)
+codegen-units = 1    # Limit to 1 codegen unit to maximize LTO optimization
+panic = "abort"      # Abort on panic to remove unwinding tables
+strip = true         # Strip symbols and debug info from binary
