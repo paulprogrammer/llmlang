@@ -1,9 +1,9 @@
 // env_access.llm
-// Demonstrates native environment access via 🌍
+// Demonstrates native environment access via env
 
 : main
-    L api_key 🌍 "API_KEY"
-    ? ℓ ⚓ api_key
-        📤 1 ⧉ "API Key found: " ⮞ api_key
+    L api_key env "API_KEY"
+    ? sl $ api_key
+        ) 1 sc "API Key found: " > api_key
     :
-        📤 2 "Error: API_KEY not set in environment.\n"
+        ) 2 "Error: API_KEY not set in environment.\n"

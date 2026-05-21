@@ -2,19 +2,19 @@
 // Demonstrates the full string manipulation suite
 
 : check_email email
-    . ? ≈ ⚓ ^0 "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-            📤 1 ⧉ ⚓ ^0 " is a valid email.\n"
-            📤 2 ⧉ ⚓ ^0 " is INVALID.\n"
-      ⮞ ^0
+    . ? sr $ ^0 "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+            ) 1 sc $ ^0 " is a valid email.\n"
+            ) 2 sc $ ^0 " is INVALID.\n"
+      > ^0
 
 : main
     L s "User:paul programmer:1234"
-    L user 🪓 ⚓ ^0 ":" 0
-    L name 🪓 ⚓ ^1 ":" 1
-    L id   🪓 ⚓ ^2 ":" 2
-    . 📤 1 ⧉ "ID: " ⧉ ⚓ ^0 ⧉ " Name: " ⧉ ⚓ ^1 "\n"
-    L pos 🔍 ⚓ ^3 "paul"
-    . 📤 1 ⧉ "Found paul at: " ⧉ 🧵 ⚓ ^0 "\n"
-    . 📤 1 ⧉ "Total length: " ⧉ 🧵 ℓ ⚓ ^4 "\n"
+    L user sp $ ^0 ":" 0
+    L name sp $ ^1 ":" 1
+    L id   sp $ ^2 ":" 2
+    . ) 1 sc "ID: " sc $ ^0 sc " Name: " sc $ ^1 "\n"
+    L pos sf $ ^3 "paul"
+    . ) 1 sc "Found paul at: " sc str $ ^0 "\n"
+    . ) 1 sc "Total length: " sc str sl $ ^4 "\n"
     . @ check_email "test@example.com"
       @ check_email "bad-email"

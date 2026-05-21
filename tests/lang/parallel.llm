@@ -1,11 +1,11 @@
 // Parallelism Test
 
 : fib n
-    ? < ⚓ n 2
-        ⮞ n
-        + @ fib - ⚓ n 1 @ fib - ⮞ n 2
+    ? < $ n 2
+        > n
+        + @ fib - $ n 1 @ fib - > n 2
 
 : main
     L res @ fib 20
-    . 📤 1 ⧉ "Fib 20: " ⧉ 🧵 ⮞ res "\n"
+    . ) 1 sc "Fib 20: " sc str > res "\n"
     0

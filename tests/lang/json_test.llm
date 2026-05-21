@@ -24,35 +24,35 @@ I json arr_get
     L k_coding "\"coding\""
 
     // Parse the JSON
-    L root @1 parse ⚓ raw_json
+    L root @1 parse $ raw_json
 
     // Check root values
-    L code @2 get_int ⚓ root ⚓ k_code
-    . ? = code 200 0 🚨 "code mismatch"
+    L code @2 get_int $ root $ k_code
+    . ? = code 200 0 ! "code mismatch"
 
-    L status @2 get_str ⚓ root ⚓ k_status
-    . ? ≈ ⚓ status ⚓ k_ok 0 🚨 "status mismatch"
+    L status @2 get_str $ root $ k_status
+    . ? sr $ status $ k_ok 0 ! "status mismatch"
 
     // Get nested data object
-    L data @2 get_obj ⚓ root ⚓ k_data
-    . ? = data 0 🚨 "missing data object" 0
+    L data @2 get_obj $ root $ k_data
+    . ? = data 0 ! "missing data object" 0
 
-    L user @2 get_str data ⚓ k_user
-    . ? ≈ ⚓ user ⚓ k_alice 0 🚨 "user mismatch"
+    L user @2 get_str data $ k_user
+    . ? sr $ user $ k_alice 0 ! "user mismatch"
 
     // Get hobbies array
-    L hobbies @2 get_arr data ⚓ k_hobbies
-    . ? = hobbies 0 🚨 "missing hobbies array" 0
+    L hobbies @2 get_arr data $ k_hobbies
+    . ? = hobbies 0 ! "missing hobbies array" 0
 
     L len @1 arr_len hobbies
-    . ? = len 2 0 🚨 "hobbies length mismatch"
+    . ? = len 2 0 ! "hobbies length mismatch"
 
     L h0_val @2 arr_get hobbies 0
     L h0 @1 stringify h0_val
-    . ? ≈ ⚓ h0 ⚓ k_reading 0 🚨 "hobby 0 mismatch"
+    . ? sr $ h0 $ k_reading 0 ! "hobby 0 mismatch"
 
     L h1_val @2 arr_get hobbies 1
     L h1 @1 stringify h1_val
-    . ? ≈ ⚓ h1 ⚓ k_coding 0 🚨 "hobby 1 mismatch"
+    . ? sr $ h1 $ k_coding 0 ! "hobby 1 mismatch"
 
     0

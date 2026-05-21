@@ -1,12 +1,12 @@
 : risky_div x
-    ? = ⚓ x 0
-        . 🚨 "Division by zero!" ⮞ x
-        / 100 ⮞ x
+    ? = $ x 0
+        . ! "Division by zero`" > x
+        / 100 > x
 
 : main
-    L res 🛡️
+    L res ^
         @ risky_div 0
-        . 📤 1 "Caught panic, returning fallback 42\n"
+        . ) 1 "Caught panic, returning fallback 42\n"
         42
-    . 📤 1 ⧉ "Final Result: " ⧉ 🧵 ⮞ res "\n"
+    . ) 1 sc "Final Result: " sc str > res "\n"
     0

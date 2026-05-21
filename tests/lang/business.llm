@@ -3,37 +3,37 @@
 # Product id score price
 
 : double_price p
-    💰* ⚓ p 💰2.00
+    %* $ p %2.00
 
 : is_high_score id score price
-    > ⚓ score 500
+    gt $ score 500
 
 : main
     L p N Product 3
-    . S ⚓ p id 0 1
-    . S ⚓ p score 0 100
-    . S ⚓ p price 0 💰10.00
-    . S ⚓ p id 1 2
-    . S ⚓ p score 1 600
-    . S ⚓ p price 1 💰20.00
-    . S ⚓ p id 2 3
-    . S ⚓ p score 2 400
-    . S ⚓ p price 2 💰30.00
-    L doubled ⟴ ⮞ p "price" double_price
-    . ? = G ⚓ doubled price 1 💰40.00
+    . S $ p id 0 1
+    . S $ p score 0 100
+    . S $ p price 0 %10.00
+    . S $ p id 1 2
+    . S $ p score 1 600
+    . S $ p price 1 %20.00
+    . S $ p id 2 3
+    . S $ p score 2 400
+    . S $ p price 2 %30.00
+    L doubled map > p "price" double_price
+    . ? = G $ doubled price 1 %40.00
         0
-        🚨 "Map failed"
-    L high ▽ ⮞ doubled is_high_score
-    . ? = ℓ ⚓ high 1
+        ! "Map failed"
+    L high flt > doubled is_high_score
+    . ? = sl $ high 1
         0
-        🚨 "Filter count failed"
-    . ? = G ⚓ high id 0 2
+        ! "Filter count failed"
+    . ? = G $ high id 0 2
         0
-        🚨 "Filter content failed"
-    . ? ≈ 💰🧵 G ⚓ high price 0 "40.0000"
+        ! "Filter content failed"
+    . ? sr %str G $ high price 0 "40.0000"
         0
-        🚨 "MoneyStr failed"
-    L home 🌍 "HOME"
-    ? > ℓ ⮞ home 0
+        ! "MoneyStr failed"
+    L home env "HOME"
+    ? gt sl > home 0
         0
-        🚨 "Env failed"
+        ! "Env failed"

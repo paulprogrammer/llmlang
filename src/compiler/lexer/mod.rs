@@ -42,13 +42,14 @@ pub enum Token {
     Money,     // 💰
     Panic,     // 🚨
     Trap,      // 🛡️
-    TimeNow,   // 🕒
-    TimeNano,  // 🕒⌛
-    TimeGet,   // 📅
-    TimeSet,   // 📆
-    Env,       // 🌍
-    HttpClient, // 🌐
-    HttpServer, // 🛰️
+    TimeNow,   // tn
+    TimeNano,  // tns
+    TimeZone,  // tz
+    TimeGet,   // tg
+    TimeSet,   // ts
+    Env,       // env
+    HttpClient, // http
+    HttpServer, // srv
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -90,51 +91,32 @@ impl Lexer {
             '-' => Token::Sub,
             '*' => Token::Mul,
             '/' => self.lex_slash()?,
-            '⮞' => Token::Move,
-            '⚓' => Token::Borrow,
+            '>' => Token::Move,
+            '$' => Token::Borrow,
             '~' => Token::MutBorrow,
             '=' => Token::Eq,
             '<' => Token::Lt,
-            '>' => Token::Gt,
             '.' => Token::Dot,
             '&' => Token::BitAnd,
             '|' => Token::BitOr,
             ':' => Token::Define,
             '#' => Token::Shape,
             '?' => Token::Question,
-            '!' => Token::Bang,
+            '!' => Token::Panic,
+            '`' => Token::Bang,
+            '(' => Token::Read,
+            ')' => Token::Write,
+            '%' => Token::Money,
             'N' => Token::New,
             'G' => Token::Get,
             'S' => Token::Set,
             'X' => Token::Export,
             'L' => Token::Let,
             'I' => Token::Import,
-            '^' => self.lex_xor_or_debruijn(),
-            '\u{2113}' => Token::Len,
-            '\u{29C9}' => Token::Cat,
-            '\u{2702}' => Token::StrSub,
-            '\u{1F50D}' => Token::Loc,
-            '\u{2248}' => Token::Reg,
-            '\u{1F4E5}' => Token::Read,
-            '\u{1F4E4}' => Token::Write,
-            '\u{1F9F5}' => Token::Str,
-            '\u{1FA93}' => Token::Split,
-            '\u{1F4E6}' => self.lex_arity_token(Token::Pack(1)),
-            '\u{27F4}' => Token::Map,
-            '\u{25BD}' => Token::Filter,
-            '\u{1F4B0}' => Token::Money,
-            '\u{1F6A8}' => Token::Panic,
-            '\u{1F6E1}' => Token::Trap,
-            '\u{1F552}' => self.lex_clock(),
-            '\u{1F4C5}' => Token::TimeGet,
-            '\u{1F4C6}' => Token::TimeSet,
-            '\u{1F30D}' => Token::Env,
-            '\u{1F310}' => Token::HttpClient,
-            '\u{1F6F0}' => Token::HttpServer,
+            '^' => self.lex_trap_or_debruijn(),
             '"' => self.lex_string(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
-            '\u{FE0F}' => return self.next_token(),
             _ => return Err(CompileError::new("E001", &self.filename, self.line)),
         };
         Ok(tok)
@@ -187,10 +169,34 @@ impl Lexer {
             id_str.push(self.input[self.pos]);
             self.pos += 1;
         }
-        Token::Identifier(id_str)
+        match id_str.as_str() {
+            "map" => Token::Map,
+            "flt" => Token::Filter,
+            "http" => Token::HttpClient,
+            "srv" => Token::HttpServer,
+            "env" => Token::Env,
+            "jp" => Token::Pack(1),
+            "ju" => Token::Pack(2),
+            "sl" => Token::Len,
+            "sc" => Token::Cat,
+            "ss" => Token::StrSub,
+            "sf" => Token::Loc,
+            "sr" => Token::Reg,
+            "sp" => Token::Split,
+            "tn" => Token::TimeNow,
+            "tns" => Token::TimeNano,
+            "tz" => Token::TimeZone,
+            "tg" => Token::TimeGet,
+            "ts" => Token::TimeSet,
+            "str" => Token::Str,
+            "gt" => Token::Gt,
+            "lt" => Token::Lt,
+            "xor" => Token::BitXor,
+            _ => Token::Identifier(id_str),
+        }
     }
 
-    fn lex_xor_or_debruijn(&mut self) -> Token {
+    fn lex_trap_or_debruijn(&mut self) -> Token {
         if self.pos < self.input.len() && self.input[self.pos].is_digit(10) {
             let mut num_str = String::new();
             while self.pos < self.input.len() && self.input[self.pos].is_digit(10) {
@@ -199,7 +205,7 @@ impl Lexer {
             }
             Token::DeBruijn(num_str.parse().unwrap_or(0))
         } else {
-            Token::BitXor
+            Token::Trap
         }
     }
 
@@ -228,15 +234,6 @@ impl Lexer {
             self.pos += 1; // consume "
         }
         Token::String(s)
-    }
-
-    fn lex_clock(&mut self) -> Token {
-        if self.pos < self.input.len() && self.input[self.pos] == '\u{231B}' {
-            self.pos += 1;
-            Token::TimeNano
-        } else {
-            Token::TimeNow
-        }
     }
 
     fn lex_slash(&mut self) -> Result<Token, CompileError> {

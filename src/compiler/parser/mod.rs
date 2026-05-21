@@ -324,7 +324,11 @@ impl Parser {
             }
             Token::Import => {
                 self.consume()?;
-                let module = if let Token::Identifier(s) = self.consume()? { s } else { return Err(self.error("E002")); };
+                let module = match self.consume()? {
+                    Token::Identifier(s) => s,
+                    Token::HttpClient => "http".to_string(),
+                    _ => return Err(self.error("E002")),
+                };
                 let symbol = if let Token::Identifier(s) = self.consume()? { s } else { return Err(self.error("E002")); };
                 let (funcs, shapes) = self.load_signature(&module)?;
                 
@@ -432,12 +436,13 @@ impl Parser {
                     let left = self.parse_expr()?;
                     let right = self.parse_expr()?;
                     Expr::TimeOp(op, Box::new(left), Box::new(right))
-                } else if let Token::Env = self.current_token {
-                    self.consume()?;
-                    Expr::TimeZone
                 } else {
                     Expr::TimeNow
                 }
+            }
+            Token::TimeZone => {
+                self.consume()?;
+                Expr::TimeZone
             }
             Token::TimeNano => {
                 self.consume()?;

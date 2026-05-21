@@ -44,7 +44,7 @@ fn test_positive_div() {
 #[test]
 fn test_positive_comparisons() {
     let context = Context::create();
-    let input = "X : main x y < ⚓ ^1 ⚓ ^0";
+    let input = "X : main x y < $ ^1 $ ^0";
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = parse_module(input)[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
@@ -55,7 +55,7 @@ fn test_positive_comparisons() {
 #[test]
 fn test_positive_bitwise() {
     let context = Context::create();
-    let input = "X : main x y | & ⚓ ^1 ⚓ ^0 ^ ⚓ ^1 ⚓ ^0";
+    let input = "X : main x y | & $ ^1 $ ^0 xor $ ^1 $ ^0";
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = parse_module(input)[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
@@ -93,7 +93,7 @@ fn test_positive_soa_shape() {
 #[test]
 fn test_positive_move_borrow() {
     let context = Context::create();
-    let input = "X : test x + ⚓ ^0 ⮞ ^0"; 
+    let input = "X : test x + $ ^0 > ^0"; 
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported).unwrap(); }
@@ -103,7 +103,7 @@ fn test_positive_move_borrow() {
 #[test]
 fn test_negative_double_move() {
     let context = Context::create();
-    let input = "X : test x + ⮞ ^0 ⮞ ^0";
+    let input = "X : test x + > ^0 > ^0";
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, _) = ast {
@@ -117,7 +117,7 @@ fn test_negative_double_move() {
 #[test]
 fn test_positive_let() {
     let context = Context::create();
-    let input = "X : test x L y + ^0 1 ⮞ ^0"; 
+    let input = "X : test x L y + ^0 1 > ^0"; 
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported).unwrap(); }
@@ -128,7 +128,7 @@ fn test_positive_let() {
 #[test]
 fn test_positive_recursion() {
     let context = Context::create();
-    let input = "X : fact n ? ^0 * ⚓ ^0 @ fact - ⮞ ^0 1 ⮞ ^0";
+    let input = "X : fact n ? ^0 * $ ^0 @ fact - > ^0 1 > ^0";
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported).unwrap(); }
@@ -139,7 +139,7 @@ fn test_positive_recursion() {
 #[test]
 fn test_positive_expansion() {
     let context = Context::create();
-    let input = "X : poly obj ! G ⚓ ! obj x 0";
+    let input = "X : poly obj ` G $ ` obj x 0";
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     codegen.gen_shape("Point", &["x".to_string()], false);
@@ -154,7 +154,7 @@ fn test_positive_expansion() {
 #[test]
 fn test_positive_export_sig() {
     let context = Context::create();
-    let input = "X # Point x y\nX : add_x obj ! G ⚓ ! obj x 0";
+    let input = "X # Point x y\nX : add_x obj ` G $ ` obj x 0";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
@@ -172,9 +172,9 @@ fn test_positive_export_sig() {
 
 #[test]
 fn test_positive_fingerprint() {
-    let input1 = "X : f1 x + ⮞ ^0 1";
-    let input2 = "X : f2 y + ⮞ ^0 1";
-    let input3 = "X : f3 x * ⮞ ^0 2";
+    let input1 = "X : f1 x + > ^0 1";
+    let input2 = "X : f2 y + > ^0 1";
+    let input3 = "X : f3 x * > ^0 2";
 
     let mut parser1 = new_parser(Lexer::new(input1), "test1.llm".to_string());
     let ast1 = parser1.parse_expr().unwrap();
@@ -309,7 +309,7 @@ fn test_positive_string_literals() {
 #[test]
 fn test_positive_string_ops() {
     let context = Context::create();
-    let input = "X : main ⧉ \"a\" \"b\"";
+    let input = "X : main sc \"a\" \"b\"";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
@@ -320,7 +320,7 @@ fn test_positive_string_ops() {
 #[test]
 fn test_positive_regex() {
     let context = Context::create();
-    let input = "X : main ≈ \"hello\" \"h.*o\"";
+    let input = "X : main sr \"hello\" \"h.*o\"";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
@@ -331,7 +331,7 @@ fn test_positive_regex() {
 #[test]
 fn test_positive_system_ops() {
     let context = Context::create();
-    let input = "X : main L s 📥 0 0";
+    let input = "X : main L s ( 0 0";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
@@ -343,7 +343,7 @@ fn test_positive_system_ops() {
 #[test]
 fn test_positive_split_op() {
     let context = Context::create();
-    let input = "X : main 🪓 \"a,b,c\" \",\" 1";
+    let input = "X : main sp \"a,b,c\" \",\" 1";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
@@ -357,7 +357,7 @@ fn test_positive_auto_parallelism() {
     // Threshold is 10. Each '+' adds 1. 30 nested '+' will be > 10.
     let mut input = "X : main x ".to_string();
     for _ in 0..30 { input.push_str("+ "); }
-    input.push_str("⚓ ^0 ");
+    input.push_str("$ ^0 ");
     for _ in 0..30 { input.push_str("1 "); }
     let mut parser = new_parser(Lexer::new(&input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config { parallel_threshold: 10, ..llmlang::Config::default() });
@@ -369,7 +369,7 @@ fn test_positive_auto_parallelism() {
 #[test]
 fn test_positive_temporal() {
     let context = Context::create();
-    let input = "X : main L t 🕒 L y 📅 ⚓ ^0 0 📆 ⮞ ^0 1 1 0 0 0";
+    let input = "X : main L t tn L y tg $ ^0 0 ts > ^0 1 1 0 0 0";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
@@ -382,7 +382,7 @@ fn test_positive_temporal() {
 #[test]
 fn test_positive_env() {
     let context = Context::create();
-    let input = "X : main 🌍 \"HOME\"";
+    let input = "X : main env \"HOME\"";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
@@ -395,7 +395,7 @@ fn test_positive_json() {
     let context = Context::create();
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     codegen.gen_shape("User", &["id".to_string(), "age".to_string()], false);
-    let input = "X : main L u N User 1 . 📦 ⚓ ^0 📦2 \"{}\" \"User\"";
+    let input = "X : main L u N User 1 . jp $ ^0 ju \"{}\" \"User\"";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
@@ -406,7 +406,7 @@ fn test_positive_json() {
 #[test]
 fn test_positive_money() {
     let context = Context::create();
-    let input = "X : main x y 💰🧵 💰+ ⚓ ^1 ⚓ ^0";
+    let input = "X : main x y %str %+ $ ^1 $ ^0";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
@@ -419,7 +419,7 @@ fn test_positive_money() {
 #[test]
 fn test_positive_trap() {
     let context = Context::create();
-    let input = "X : main 🛡️ 🚨 \"fail\" 42";
+    let input = "X : main ^ ! \"fail\" 42";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
@@ -433,7 +433,7 @@ fn test_positive_trap() {
 #[test]
 fn test_integration_nested_traps() {
     let context = Context::create();
-    let input = "X : main 🛡️ 🛡️ 🚨 \"inner\" 1 2";
+    let input = "X : main ^ ^ ! \"inner\" 1 2";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
@@ -448,7 +448,7 @@ fn test_integration_json_filter() {
     let context = Context::create();
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     codegen.gen_shape("User", &["id".to_string(), "active".to_string()], false);
-    let input = "X : is_active id active ⚓ active\nX : main L u 📦2 \"[]\" \"User\" ▽ ⮞ u is_active";
+    let input = "X : is_active id active $ active\nX : main L u ju \"[]\" \"User\" flt > u is_active";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let exprs = parser.parse_module().unwrap();
     for expr in exprs {
@@ -465,7 +465,7 @@ fn test_integration_json_filter() {
 
 #[test]
 fn test_analysis_dfe() {
-    let input = ": used x + ⚓ x 1\n: unused y * ⚓ y 2\n: main @ used 10";
+    let input = ": used x + $ x 1\n: unused y * $ y 2\n: main @ used 10";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let mut exprs = parser.parse_module().unwrap();
     
@@ -487,7 +487,7 @@ fn test_analysis_dfe() {
 fn test_integration_complex_fault_tolerance() {
     let context = Context::create();
     // Recursive loop with nested traps and parallelism
-    let input = "X : risky i ? = ⚓ i 3 🚨 \"fail\" ⚓ i\nX : loop i ? < ⚓ i 5 L res 🛡️ @ risky ⚓ i 0 . 📤 1 ⧉ 🧵 ⮞ res \"\\n\" @ loop + ⚓ i 1 0\nX : main @ loop 0";
+    let input = "X : risky i ? = $ i 3 ! \"fail\" $ i\nX : loop i ? < $ i 5 L res ^ @ risky $ i 0 . ) 1 sc str > res \"\\n\" @ loop + $ i 1 0\nX : main @ loop 0";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
@@ -506,7 +506,7 @@ fn test_integration_complex_fault_tolerance() {
 fn test_esoteric_parallel_recursion() {
     let context = Context::create();
     // Function that parallelizes its recursive call using a borrow
-    let input = "X : main x ? ⚓ x + 1 @ main - ⚓ x 1 0";
+    let input = "X : main x ? $ x + 1 @ main - $ x 1 0";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config { parallel_threshold: 1, ..llmlang::Config::default() });
     let exprs = parser.parse_module().unwrap();
@@ -519,7 +519,7 @@ fn test_esoteric_parallel_recursion() {
 fn test_esoteric_parallel_inside_trap() {
     let context = Context::create();
     // A trap containing a heavy pure expression (which should fork)
-    let mut input = "X : main 🛡️ ".to_string();
+    let mut input = "X : main ^ ".to_string();
     for _ in 0..10 { input.push_str("+ "); }
     input.push_str("1 ");
     for _ in 0..10 { input.push_str("1 "); }
@@ -539,7 +539,7 @@ fn test_esoteric_parallel_inside_trap() {
 fn test_esoteric_multi_move_error() {
     let context = Context::create();
     // Attempting to move a borrowed variable inside a trap (E016)
-    let input = "X : main x 🛡️ ⮞ x ⚓ x";
+    let input = "X : main x ^ > x $ x";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
@@ -616,7 +616,7 @@ fn test_positive_import_search_path() {
 #[test]
 fn test_negative_shape_field_mismatch() {
     let context = Context::create();
-    let input = "# Point x y\n: main\n  L p N Point 1\n  G ⚓ p z 0\n";
+    let input = "# Point x y\n: main\n  L p N Point 1\n  G $ p z 0\n";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test.llm", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
@@ -640,7 +640,7 @@ fn test_negative_shape_field_mismatch() {
 #[test]
 fn test_positive_namespaced_codegen() {
     let context = Context::create();
-    let input = "X : area width height\n  * ⚓ width ⚓ height\n";
+    let input = "X : area width height\n  * $ width $ height\n";
     let mut parser = new_parser(Lexer::new(input), "lib_geometry.llm".to_string());
     let codegen = CodeGen::new(&context, "lib_geometry.llm", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
@@ -687,7 +687,7 @@ fn test_custom_signature_resolver() {
 
 #[test]
 fn test_verification_use_after_move() {
-    let input = "L x 42 . ⮞ ^0 ^0";
+    let input = "L x 42 . > ^0 ^0";
     let ast = parse_expr(input);
     let mut verify_ctx = llmlang::compiler::analysis::verify::VerificationContext {
         shapes: std::collections::HashMap::new(),
@@ -702,7 +702,7 @@ fn test_verification_use_after_move() {
 
 #[test]
 fn test_verification_double_move() {
-    let input = "L x 42 . ⮞ ^0 ⮞ ^0";
+    let input = "L x 42 . > ^0 > ^0";
     let ast = parse_expr(input);
     let mut verify_ctx = llmlang::compiler::analysis::verify::VerificationContext {
         shapes: std::collections::HashMap::new(),
@@ -717,7 +717,7 @@ fn test_verification_double_move() {
 
 #[test]
 fn test_verification_if_stack_mismatch() {
-    let input = "L x 42 ? 1 ⮞ ^0 ^0";
+    let input = "L x 42 ? 1 > ^0 ^0";
     let ast = parse_expr(input);
     let mut verify_ctx = llmlang::compiler::analysis::verify::VerificationContext {
         shapes: std::collections::HashMap::new(),

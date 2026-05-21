@@ -2,41 +2,41 @@
 # User id age
 
 : double x
-    * ⮞ x 2
+    * > x 2
 
 : is_old id age
-    > ⮞ age 35
+    gt > age 35
 
 : main
     L u N User 2
-    . S ⚓ u id 0 101
-    . S ⚓ u id 1 102
-    . S ⚓ u age 0 30
-    . S ⚓ u age 1 40
+    . S $ u id 0 101
+    . S $ u id 1 102
+    . S $ u age 0 30
+    . S $ u age 1 40
     
     // 1. Map: double the age
-    L u2 ⟴ ⚓ u "age" double
-    . 📤 1 ⧉ "Mapped Age 0: " ⧉ 🧵 G ⚓ u2 age 0 "\n"
-    . 📤 1 ⧉ "Mapped Age 1: " ⧉ 🧵 G ⚓ u2 age 1 "\n"
+    L u2 map $ u "age" double
+    . ) 1 sc "Mapped Age 0: " sc str G $ u2 age 0 "\n"
+    . ) 1 sc "Mapped Age 1: " sc str G $ u2 age 1 "\n"
     
-    // 2. Filter: only age > 35 (the original u had one: age 40)
-    L u3 ▽ ⚓ u is_old
-    . 📤 1 ⧉ "Filtered count: " ⧉ 🧵 ℓ ⚓ u3 "\n"
-    . 📤 1 ⧉ "Filtered ID 0: " ⧉ 🧵 G ⚓ u3 id 0 "\n"
+    // 2. Filter: only age gt 35 (the original u had one: age 40)
+    L u3 flt $ u is_old
+    . ) 1 sc "Filtered count: " sc str sl $ u3 "\n"
+    . ) 1 sc "Filtered ID 0: " sc str G $ u3 id 0 "\n"
     
     // 3. Money: 10.50 * 2
     L m1 105000 // 10.5000
-    L m2 💰* ⚓ m1 20000 // * 2.0000
-    . 📤 1 ⧉ "Money (10.5 * 2): " ⧉ 💰🧵 ⚓ m2 "\n"
+    L m2 %* $ m1 20000 // * 2.0000
+    . ) 1 sc "Money (10.5 * 2): " sc %str $ m2 "\n"
     
     // 4. Money Sum: 10.50 + 20.00
-    L m3 💰+ ⚓ m1 200000 // + 20.0000
-    . 📤 1 ⧉ "Money Sum: " ⧉ 💰🧵 ⮞ m3 "\n"
+    L m3 %+ $ m1 200000 // + 20.0000
+    . ) 1 sc "Money Sum: " sc %str > m3 "\n"
     
     // 5. Time: Now + 3 days
-    L t1 🕒
-    L t2 🕒+ ⚓ t1 259200 // 3 * 86400
-    . 📤 1 ⧉ "TZ: " ⧉ 🕒🌍 "\n"
-    . 📤 1 ⧉ "Today Year: " ⧉ 🧵 📅 ⚓ t1 0 "\n"
-    . 📤 1 ⧉ "Future Year: " ⧉ 🧵 📅 ⮞ t2 0 "\n"
+    L t1 tn
+    L t2 tn+ $ t1 259200 // 3 * 86400
+    . ) 1 sc "TZ: " sc tz "\n"
+    . ) 1 sc "Today Year: " sc str tg $ t1 0 "\n"
+    . ) 1 sc "Future Year: " sc str tg > t2 0 "\n"
     0

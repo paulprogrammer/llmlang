@@ -8,11 +8,11 @@ I lib_math greet
 
 : main
     L p N Point 1
-    . S ⚓ p x 0 10
-    . S ⚓ p y 0 20
-    L sum @2 add G ⚓ p x 0 G ⚓ p y 0
-    . ? = ⚓ sum 30 0 🚨 "Imported add failed"
+    . S $ p x 0 10
+    . S $ p y 0 20
+    L sum @2 add G $ p x 0 G $ p y 0
+    . ? = $ sum 30 0 ! "Imported add failed"
     L trip @1 triple 10
-    . ? = ⚓ trip 30 0 🚨 "Imported triple failed"
+    . ? = $ trip 30 0 ! "Imported triple failed"
     L msg @1 greet "Paul"
-    ? ≈ ⮞ msg "Hello, Paul" 0 🚨 "Imported greet failed"
+    ? sr > msg "Hello, Paul" 0 ! "Imported greet failed"

@@ -2,19 +2,19 @@
 
 : main
     L u N User 2
-    . S ⚓ u id 0 101
-    . S ⚓ u score 0 500
-    . S ⚓ u id 1 102
-    . S ⚓ u score 1 750
-    L j 📦 ⚓ u
-    . ? ≈ ⚓ j ".*101.*102.*500.*750.*"
+    . S $ u id 0 101
+    . S $ u score 0 500
+    . S $ u id 1 102
+    . S $ u score 1 750
+    L j jp $ u
+    . ? sr $ j ".*101.*102.*500.*750.*"
         0
-        🚨 "JSON pack failed"
-    L u2 📦2 ⮞ j "User"
-    . ? = G ⚓ u2 id 0 101
+        ! "JSON pack failed"
+    L u2 ju > j "User"
+    . ? = G $ u2 id 0 101
         0
-        🚨 "JSON unpack id 0 failed"
-    . ? = G ⚓ u2 score 1 750
+        ! "JSON unpack id 0 failed"
+    . ? = G $ u2 score 1 750
         0
-        🚨 "JSON unpack score 1 failed"
+        ! "JSON unpack score 1 failed"
     0

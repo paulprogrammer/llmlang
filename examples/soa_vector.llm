@@ -6,8 +6,8 @@
 
 // Define a function to initialize a vector at index 0
 : init_vec n
-    L v N Vector3 ⮞ ^0
-    S ⚓ v x 0 10
-    S ⚓ v y 0 20
-    S ⚓ v z 0 30
-    G ⮞ v x 0
+    L v N Vector3 > ^0
+    S $ v x 0 10
+    S $ v y 0 20
+    S $ v z 0 30
+    G > v x 0

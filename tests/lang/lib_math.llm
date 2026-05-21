@@ -4,10 +4,10 @@
 X # Point x y
 
 X : add x y
-    + ⚓ x ⚓ y
+    + $ x $ y
 
 X : triple x
-    * ⚓ x 3
+    * $ x 3
 
 X : greet name
-    ⧉ "Hello, " ⚓ name
+    sc "Hello, " $ name

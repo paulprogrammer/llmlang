@@ -1,5 +1,5 @@
 // Expansion Polymorphism
-// Uses: Expansion (!), Structural Duck Typing
+// Uses: Expansion (`), Structural Duck Typing
 
 // Define two different shapes with an 'x' field
 # Point x y
@@ -7,8 +7,8 @@
 
 // Generic function that doesn't care about the type
 // as long as it has field 'x'
-: get_x !obj
-    G !obj x 0
+: get_x `obj
+    G `obj x 0
 
 // Test calls (handled by compiler monomorphization)
 // @ get_x N Point 1

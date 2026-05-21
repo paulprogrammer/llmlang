@@ -3,34 +3,34 @@
 # Asset id qty price
 
 : discount_price p
-    💰* ⚓ p 💰0.90
+    %* $ p %0.90
 
 : is_low_stock id qty price
-    < ⚓ qty 10
+    < $ qty 10
 
 : main
     L inv N Asset 3
-    . S ⚓ inv id 0 101
-    . S ⚓ inv qty 0 5
-    . S ⚓ inv price 0 💰100.00
-    . S ⚓ inv id 1 102
-    . S ⚓ inv qty 1 20
-    . S ⚓ inv price 1 💰200.00
-    . S ⚓ inv id 2 103
-    . S ⚓ inv qty 2 8
-    . S ⚓ inv price 2 💰150.00
+    . S $ inv id 0 101
+    . S $ inv qty 0 5
+    . S $ inv price 0 %100.00
+    . S $ inv id 1 102
+    . S $ inv qty 1 20
+    . S $ inv price 1 %200.00
+    . S $ inv id 2 103
+    . S $ inv qty 2 8
+    . S $ inv price 2 %150.00
 
-    L discounted ⟴ ⮞ inv "price" discount_price
-    L low_stock ▽ ⮞ discounted is_low_stock
+    L discounted map > inv "price" discount_price
+    L low_stock flt > discounted is_low_stock
 
-    . ? = ℓ ⚓ low_stock 2
+    . ? = sl $ low_stock 2
         0
-        🚨 "Filter count mismatch"
+        ! "Filter count mismatch"
 
-    . ? ≈ 💰🧵 G ⚓ low_stock price 0 "90.0000"
+    . ? sr %str G $ low_stock price 0 "90.0000"
         0
-        🚨 "Item 101 price mismatch"
-    . ? ≈ 💰🧵 G ⚓ low_stock price 1 "135.0000"
+        ! "Item 101 price mismatch"
+    . ? sr %str G $ low_stock price 1 "135.0000"
         0
-        🚨 "Item 103 price mismatch"
+        ! "Item 103 price mismatch"
     0

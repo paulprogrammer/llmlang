@@ -2,4 +2,4 @@
 // Uses: Branching Recursion Move Borrow
 // Logic: fact n
 
-: fact n ? ^0 * ⚓ ^0 @ fact - ⮞ ^0 1 ⮞ ^0
+: fact n ? ^0 * $ ^0 @ fact - > ^0 1 > ^0

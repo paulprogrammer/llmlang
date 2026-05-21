@@ -1,23 +1,23 @@
 // HTTP Native Server Test
 
 : main
-    L server 🛰️ 0 "8081"
-    . 📤 1 "Server started on 8081\n"
+    L server srv 0 "8081"
+    . ) 1 "Server started on 8081\n"
 
-    L req1 📥 ⚓ server
-    L path1 🛰️ 2 ⚓ req1
-    L suffix1 ⧉ ⚓ path1 "\n"
-    L log1 ⧉ "Received request for: " ⚓ suffix1
-    . 📤 1 ⚓ log1
-    . 📤 ⮞ req1 "Hello from llmlang server"
+    L req1 ( $ server
+    L path1 srv 2 $ req1
+    L suffix1 sc $ path1 "\n"
+    L log1 sc "Received request for: " $ suffix1
+    . ) 1 $ log1
+    . ) > req1 "Hello from llmlang server"
 
-    L req2 📥 ⚓ server
-    L path2 🛰️ 2 ⚓ req2
-    L suffix2 ⧉ ⚓ path2 "\n"
-    L log2 ⧉ "Received request for: " ⚓ suffix2
-    . 📤 1 ⚓ log2
-    . 📤 ⮞ req2 "{\"status\":\"ok\"}"
+    L req2 ( $ server
+    L path2 srv 2 $ req2
+    L suffix2 sc $ path2 "\n"
+    L log2 sc "Received request for: " $ suffix2
+    . ) 1 $ log2
+    . ) > req2 "{\"status\":\"ok\"}"
 
-    . 🛰️ 4 ⮞ server
+    . srv 4 > server
     0
 
