@@ -27,6 +27,8 @@ void llm_drop(long s) {
     if (s <= 1000) return;
     LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
     if (header->magic == 0x4C4C4D52) {
+        header->ref_cnt--;
+        if (header->ref_cnt > 0) return;
         header->magic = 0; // Prevent double drop!
         switch (header->type) {
             case RT_TYPE_JSON: {
@@ -74,6 +76,15 @@ void llm_drop(long s) {
         }
         free(header);
     }
+}
+
+long llm_dup(long s) {
+    if (s <= 1000) return s;
+    LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
+    if (header->magic == 0x4C4C4D52) {
+        header->ref_cnt++;
+    }
+    return s;
 }
 
 

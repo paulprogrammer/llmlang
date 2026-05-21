@@ -1,0 +1,196 @@
+// JWT library in pure llmlang
+// Uses crypto FFI primitives for signature verification and signing
+
+I crypto sign
+I crypto verify
+
+: char_to_ascii char
+    L ascii " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\n\r\t"
+    L idx sf $ascii $char
+    ? = $idx - 0 1
+        0
+        ? = $idx 95
+            10
+            ? = $idx 96
+                13
+                ? = $idx 97
+                    9
+                    + $idx 32
+
+: ascii_to_char code
+    L ascii " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\n\r\t"
+    ? = $code 10
+        "\n"
+        ? = $code 13
+            "\r"
+            ? = $code 9
+                "\t"
+                ss $ascii - $code 32 1
+
+: b64_char val
+    ss "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" $val 1
+
+: b64_val char
+    sf "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" $char
+
+: b64_encode_rec s i len acc
+    ? gt - $len $i 2
+        L b1 @1 char_to_ascii ss $s $i 1
+        L b2 @1 char_to_ascii ss $s + $i 1 1
+        L b3 @1 char_to_ascii ss $s + $i 2 1
+        L val | | * $b1 65536 * $b2 256 $b3
+        L c1 @1 b64_char & / $val 262144 63
+        L c2 @1 b64_char & / $val 4096 63
+        L c3 @1 b64_char & / $val 64 63
+        L c4 @1 b64_char & $val 63
+        L next_acc sc > acc sc $c1 sc $c2 sc $c3 $c4
+        @4 b64_encode_rec $s + $i 3 $len > next_acc
+        ? = - $len $i 2
+            L b1 @1 char_to_ascii ss $s $i 1
+            L b2 @1 char_to_ascii ss $s + $i 1 1
+            L val | * $b1 65536 * $b2 256
+            L c1 @1 b64_char & / $val 262144 63
+            L c2 @1 b64_char & / $val 4096 63
+            L c3 @1 b64_char & / $val 64 63
+            sc > acc sc $c1 sc $c2 $c3
+            ? = - $len $i 1
+                L b1 @1 char_to_ascii ss $s $i 1
+                L val * $b1 65536
+                L c1 @1 b64_char & / $val 262144 63
+                L c2 @1 b64_char & / $val 4096 63
+                sc > acc sc $c1 $c2
+                > acc
+
+X : encode_b64url s
+    @4 b64_encode_rec $s 0 sl $s ""
+
+: b64_decode_rec s i len acc
+    ? gt - $len $i 3
+        L v1 @1 b64_val ss $s $i 1
+        L v2 @1 b64_val ss $s + $i 1 1
+        L v3 @1 b64_val ss $s + $i 2 1
+        L v4 @1 b64_val ss $s + $i 3 1
+        L val | | | * $v1 262144 * $v2 4096 * $v3 64 $v4
+        L b1 @1 ascii_to_char & / $val 65536 255
+        L b2 @1 ascii_to_char & / $val 256 255
+        L b3 @1 ascii_to_char & $val 255
+        L next_acc sc > acc sc $b1 sc $b2 $b3
+        @4 b64_decode_rec $s + $i 4 $len > next_acc
+        ? = - $len $i 3
+            L v1 @1 b64_val ss $s $i 1
+            L v2 @1 b64_val ss $s + $i 1 1
+            L v3 @1 b64_val ss $s + $i 2 1
+            L val | | * $v1 262144 * $v2 4096 * $v3 64
+            L b1 @1 ascii_to_char & / $val 65536 255
+            L b2 @1 ascii_to_char & / $val 256 255
+            sc > acc sc $b1 $b2
+            ? = - $len $i 2
+                L v1 @1 b64_val ss $s $i 1
+                L v2 @1 b64_val ss $s + $i 1 1
+                L val | * $v1 262144 * $v2 4096
+                L b1 @1 ascii_to_char & / $val 65536 255
+                sc > acc $b1
+                > acc
+
+X : decode_b64url s
+    @4 b64_decode_rec $s 0 sl $s ""
+
+: hex_val char
+    sf "0123456789abcdef" $char
+
+: hex_char val
+    ss "0123456789abcdef" $val 1
+
+: hex_to_b64url_rec hex i len acc
+    ? gt - $len $i 5
+        L h1 @1 hex_val ss $hex $i 1
+        L h2 @1 hex_val ss $hex + $i 1 1
+        L h3 @1 hex_val ss $hex + $i 2 1
+        L h4 @1 hex_val ss $hex + $i 3 1
+        L h5 @1 hex_val ss $hex + $i 4 1
+        L h6 @1 hex_val ss $hex + $i 5 1
+        L val | | | | | * $h1 1048576 * $h2 65536 * $h3 4096 * $h4 256 * $h5 16 $h6
+        L c1 @1 b64_char & / $val 262144 63
+        L c2 @1 b64_char & / $val 4096 63
+        L c3 @1 b64_char & / $val 64 63
+        L c4 @1 b64_char & $val 63
+        L next_acc sc > acc sc $c1 sc $c2 sc $c3 $c4
+        @4 hex_to_b64url_rec $hex + $i 6 $len > next_acc
+        ? = - $len $i 4
+            L h1 @1 hex_val ss $hex $i 1
+            L h2 @1 hex_val ss $hex + $i 1 1
+            L h3 @1 hex_val ss $hex + $i 2 1
+            L h4 @1 hex_val ss $hex + $i 3 1
+            L val | | | * $h1 1048576 * $h2 65536 * $h3 4096 * $h4 256
+            L c1 @1 b64_char & / $val 262144 63
+            L c2 @1 b64_char & / $val 4096 63
+            L c3 @1 b64_char & / $val 64 63
+            sc > acc sc $c1 sc $c2 $c3
+            ? = - $len $i 2
+                L h1 @1 hex_val ss $hex $i 1
+                L h2 @1 hex_val ss $hex + $i 1 1
+                L val | * $h1 1048576 * $h2 65536
+                L c1 @1 b64_char & / $val 262144 63
+                L c2 @1 b64_char & / $val 4096 63
+                sc > acc sc $c1 $c2
+                > acc
+
+: hex_to_b64url hex
+    @4 hex_to_b64url_rec $hex 0 sl $hex ""
+
+: b64url_to_hex_rec b64 i len acc
+    ? gt - $len $i 3
+        L v1 @1 b64_val ss $b64 $i 1
+        L v2 @1 b64_val ss $b64 + $i 1 1
+        L v3 @1 b64_val ss $b64 + $i 2 1
+        L v4 @1 b64_val ss $b64 + $i 3 1
+        L val | | | * $v1 262144 * $v2 4096 * $v3 64 $v4
+        L h1 @1 hex_char & / $val 1048576 15
+        L h2 @1 hex_char & / $val 65536 15
+        L h3 @1 hex_char & / $val 4096 15
+        L h4 @1 hex_char & / $val 256 15
+        L h5 @1 hex_char & / $val 16 15
+        L h6 @1 hex_char & $val 15
+        L next_acc sc > acc sc $h1 sc $h2 sc $h3 sc $h4 sc $h5 $h6
+        @4 b64url_to_hex_rec $b64 + $i 4 $len > next_acc
+        ? = - $len $i 3
+            L v1 @1 b64_val ss $b64 $i 1
+            L v2 @1 b64_val ss $b64 + $i 1 1
+            L v3 @1 b64_val ss $b64 + $i 2 1
+            L val | | * $v1 262144 * $v2 4096 * $v3 64
+            L h1 @1 hex_char & / $val 1048576 15
+            L h2 @1 hex_char & / $val 65536 15
+            L h3 @1 hex_char & / $val 4096 15
+            L h4 @1 hex_char & / $val 256 15
+            sc > acc sc $h1 sc $h2 sc $h3 $h4
+            ? = - $len $i 2
+                L v1 @1 b64_val ss $b64 $i 1
+                L v2 @1 b64_val ss $b64 + $i 1 1
+                L val | * $v1 262144 * $v2 4096
+                L h1 @1 hex_char & / $val 1048576 15
+                L h2 @1 hex_char & / $val 65536 15
+                sc > acc sc $h1 $h2
+                > acc
+
+: b64url_to_hex b64
+    @4 b64url_to_hex_rec $b64 0 sl $b64 ""
+
+X : sign header payload private_key
+    L header_b64 @1 encode_b64url $header
+    L payload_b64 @1 encode_b64url $payload
+    L data sc $header_b64 sc "." $payload_b64
+    L hex_sig @2 sign $private_key $data
+    L sig_b64 @1 hex_to_b64url > hex_sig
+    sc $data sc "." > sig_b64
+
+X : verify token public_key
+    L header_b64 sp $token "." 0
+    L payload_b64 sp $token "." 1
+    L sig_b64 sp $token "." 2
+    L data sc $header_b64 sc "." $payload_b64
+    L hex_sig @1 b64url_to_hex > sig_b64
+    @3 verify $public_key > hex_sig > data
+
+X : decode token
+    L payload_b64 sp $token "." 1
+    @1 decode_b64url > payload_b64

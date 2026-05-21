@@ -55,6 +55,7 @@ char* llm_rt_strdup(const char* s);
 void register_json_root(void* cell);
 void unregister_json_root(void* cell);
 void llm_drop(long s);
+long llm_dup(long s);
 
 __attribute__((weak)) long llm_http_client(long method, long url, long body);
 __attribute__((weak)) long llm_http_server(long op, long arg);

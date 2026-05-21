@@ -345,7 +345,6 @@ long llm_http_server_respond(HttpRequest* req, char* data_str) {
 
     close(req->client_fd);
     req->client_fd = -1;
-    llm_drop((long)req);
     return 1;
 }
 

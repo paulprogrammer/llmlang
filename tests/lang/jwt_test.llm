@@ -1,0 +1,37 @@
+// JWT Integration Test
+I jwt sign
+I jwt verify
+I jwt decode
+
+: main
+    L priv "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIN5MjHDK8Cf0wGogL8Q+i7t/9LlGUcOdHNef0BvTgxIcoAoGCCqGSM49\nAwEHoUQDQgAEwEj0uzk9p43fKTE5c+sJYdHYC6RKfppNSsEwACcGz9E9rwbsrZEb\nkqmGPtjLclRPIDhzT5Qkky2XycEAHniCnw==\n-----END EC PRIVATE KEY-----\n"
+    L pub "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwEj0uzk9p43fKTE5c+sJYdHYC6RK\nfppNSsEwACcGz9E9rwbsrZEbkqmGPtjLclRPIDhzT5Qkky2XycEAHniCnw==\n-----END PUBLIC KEY-----\n"
+
+    L header "{\"alg\":\"ES256\",\"typ\":\"JWT\"}"
+    L payload "{\"sub\":\"Paul\",\"admin\":true}"
+
+    // 1. Sign JWT
+    L token @3 sign $ header $ payload $ priv
+
+    // 2. Decode and Assert Payload Matches
+    L decoded @1 decode $ token
+    . ? sr $ decoded "^\\{\"sub\":\"Paul\",\"admin\":true\\}$" 0 ! "Decoded payload does not match"
+
+    // 3. Verify Signature
+    L valid @2 verify $ token $ pub
+    . ? = $ valid 1 0 ! "JWT signature verification failed"
+
+    // 4. Verification of Bad Token (tampered signature)
+    L bad_token sc $ token "a"
+    L valid_bad @2 verify $ bad_token $ pub
+    . ? = $ valid_bad 0 0 ! "JWT verification should have failed for bad token"
+
+    // 5. Verification of Tampered Payload
+    L header_b64 sp $ token "." 0
+    L bad_payload_b64 "eyJzdWIiOiJQYXVsIiwiYWRtaW4iOmZhbHNlfQ" // {"sub":"Paul","admin":false} in Base64Url
+    L sig_b64 sp $ token "." 2
+    L tampered_token sc $ header_b64 sc "." sc $ bad_payload_b64 sc "." $ sig_b64
+    L valid_tampered @2 verify > tampered_token $ pub
+    . ? = $ valid_tampered 0 0 ! "JWT verification should have failed for tampered payload"
+
+    0

@@ -29,6 +29,23 @@ if [ ${#TEST_FILES[@]} -eq 0 ]; then
     done
 fi
 
+# Always include lib/*.llm and -I lib for imports
+OTHER_ARGS+=("-I" "lib")
+for f in lib/*.llm; do
+    if [ -f "$f" ]; then
+        found=false
+        for tf in "${TEST_FILES[@]}"; do
+            if [[ "$tf" == "$f" ]]; then
+                found=true
+                break
+            fi
+        done
+        if [ "$found" = false ]; then
+            TEST_FILES+=("$f")
+        fi
+    fi
+done
+
 # Start background mock HTTP server for standard library testing
 python3 -c '
 from http.server import HTTPServer, BaseHTTPRequestHandler

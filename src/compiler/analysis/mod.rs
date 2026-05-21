@@ -1,9 +1,10 @@
 pub mod verify;
 
+use std::collections::HashMap;
 use crate::compiler::ast::{Expr};
 
 impl Expr {
-    pub fn returns_ptr(&self) -> bool {
+    pub fn returns_ptr_with_stack(&self, stack_ptrs: &[bool], fn_returns_ptr: &HashMap<String, bool>) -> bool {
         match self {
             Expr::String(_) | Expr::New(_, _) | Expr::Unpack(_, _) | Expr::Map(_, _, _) | Expr::Filter(_, _) => true,
             Expr::Cat(_, _) | Expr::Sub(_, _, _) | Expr::Read(_) | Expr::Str(_) | Expr::Split(_, _, _) | Expr::Pack(_) | Expr::Env(_) | Expr::MoneyStr(_) | Expr::TimeZone | Expr::FileOpen(_, _) => true,
@@ -12,23 +13,57 @@ impl Expr {
                 Expr::Integer(0) | Expr::Integer(1) | Expr::Integer(2) | Expr::Integer(3) => true,
                 _ => false,
             },
-            Expr::Let(_, _, body) | Expr::Seq(_, body) => body.returns_ptr(),
-            Expr::Move(e) | Expr::Borrow(e) | Expr::MutBorrow(e) => e.returns_ptr(),
-            Expr::Trap(t, f) => t.returns_ptr() || f.returns_ptr(),
-            Expr::Apply(f, _) => {
-                if let Expr::Identifier(ref name) = **f {
-                    name == "http_get" || name == "http_post" || name == "get" || name == "post" ||
-                    name == "json_parse" || name == "parse" ||
-                    name == "json_stringify" || name == "stringify" ||
-                    name == "json_get_str" || name == "get_str" ||
-                    name == "sign" || name == "encrypt" || name == "decrypt" || name == "unwrap" ||
-                    name == "serve" || name == "https_serve" || name == "accept"
+            Expr::Let(_, val_expr, body_expr) => {
+                let val_ptr = val_expr.returns_ptr_with_stack(stack_ptrs, fn_returns_ptr);
+                let mut new_stack = stack_ptrs.to_vec();
+                new_stack.push(val_ptr);
+                body_expr.returns_ptr_with_stack(&new_stack, fn_returns_ptr)
+            }
+            Expr::Seq(_, body) => body.returns_ptr_with_stack(stack_ptrs, fn_returns_ptr),
+            Expr::Move(e) | Expr::Borrow(e) | Expr::MutBorrow(e) => e.returns_ptr_with_stack(stack_ptrs, fn_returns_ptr),
+            Expr::Trap(t, f) | Expr::If(_, t, f) => t.returns_ptr_with_stack(stack_ptrs, fn_returns_ptr) || f.returns_ptr_with_stack(stack_ptrs, fn_returns_ptr),
+            Expr::Set(_, _, _, v) => v.returns_ptr_with_stack(stack_ptrs, fn_returns_ptr),
+            Expr::DeBruijn(idx) => {
+                if *idx < stack_ptrs.len() {
+                    stack_ptrs[stack_ptrs.len() - 1 - idx]
                 } else {
                     false
                 }
             }
+            Expr::Apply(f, _) => {
+                if let Expr::Identifier(ref name) = **f {
+                    let is_ptr_fn = match name.as_str() {
+                        "http_get" | "http_post" | "get" | "post" |
+                        "json_parse" | "parse" |
+                        "json_stringify" | "stringify" |
+                        "json_get_str" | "get_str" |
+                        "sign" | "encrypt" | "decrypt" | "unwrap" |
+                        "serve" | "https_serve" | "accept" |
+                        "decode" | "encode_b64url" | "decode_b64url" | "greet" => true,
+                        _ => name.ends_with("_get") || name.ends_with("_post") ||
+                             name.ends_with("_parse") || name.ends_with("_stringify") ||
+                             name.ends_with("_get_str") || name.ends_with("_sign") ||
+                             name.ends_with("_encrypt") || name.ends_with("_decrypt") ||
+                             name.ends_with("_unwrap") || name.ends_with("_serve") ||
+                             name.ends_with("_https_serve") || name.ends_with("_accept") ||
+                             name.ends_with("_decode") || name.ends_with("_encode_b64url") ||
+                             name.ends_with("_decode_b64url") || name.ends_with("_greet")
+                    };
+                    if is_ptr_fn {
+                        return true;
+                    }
+                    if let Some(&ret) = fn_returns_ptr.get(name) {
+                        return ret;
+                    }
+                }
+                false
+            }
             _ => false,
         }
+    }
+
+    pub fn returns_ptr(&self) -> bool {
+        self.returns_ptr_with_stack(&[], &HashMap::new())
     }
 
     pub fn is_pure(&self) -> bool {

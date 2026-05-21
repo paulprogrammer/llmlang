@@ -164,6 +164,8 @@ fn main() {
         process::exit(1);
     }
 
+    codegen.analyze_module_types(&expressions);
+
     for expr in expressions {
         match expr {
             Expr::Shape(name, fields, exported) => {

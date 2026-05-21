@@ -39,6 +39,8 @@ pub struct CodeGen<'ctx> {
     pub has_exports: std::cell::Cell<bool>,
     pub exports: std::cell::RefCell<Vec<String>>,
     pub imports: std::cell::RefCell<HashMap<String, String>>,
+    pub fn_returns_ptr: std::cell::RefCell<HashMap<String, bool>>,
+    pub fn_param_ptrs: std::cell::RefCell<HashMap<String, Vec<bool>>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -58,6 +60,20 @@ impl<'ctx> CodeGen<'ctx> {
         queue_global.set_constant(true);
         queue_global.set_linkage(inkwell::module::Linkage::LinkOnceODR);
 
+        // Prepopulate with built-in/FFI functions that return pointers
+        let mut fn_returns_ptr = HashMap::new();
+        let ffi_funcs = vec![
+            "http_get", "http_post", "get", "post",
+            "json_parse", "parse",
+            "json_stringify", "stringify",
+            "json_get_str", "get_str",
+            "sign", "encrypt", "decrypt", "unwrap",
+            "serve", "https_serve", "accept"
+        ];
+        for f in ffi_funcs {
+            fn_returns_ptr.insert(f.to_string(), true);
+        }
+
         Self { 
             context, 
             module, 
@@ -70,6 +86,8 @@ impl<'ctx> CodeGen<'ctx> {
             has_exports: std::cell::Cell::new(false),
             exports: std::cell::RefCell::new(Vec::new()),
             imports: std::cell::RefCell::new(HashMap::new()),
+            fn_returns_ptr: std::cell::RefCell::new(fn_returns_ptr),
+            fn_param_ptrs: std::cell::RefCell::new(HashMap::new()),
         }
     }
 
