@@ -8,6 +8,7 @@ This project is a compiler for `llmlang`, a programming language optimized for L
 - **Philosophy:** Performance, Token Efficiency, and Structural Predictability.
 - **Design:** See [DESIGN.md](./DESIGN.md) for the full specification.
 - **Versioning:** No version bumps (Cargo.toml, README, tags) without explicit HITL approval.
+- **Dependencies:** If you add an external dependency, ensure it is added to the CI runner configuration (e.g. `.github/workflows/ci.yml` and `.github/workflows/release.yml`).
 
 ## Workflow
 - **Parsing:** Use a hand-written recursive descent parser or `pest` for the prefix-arity AST.
