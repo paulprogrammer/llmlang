@@ -117,4 +117,9 @@ done
 clang "${final_args[@]}" "$RT_OBJ_DIR"/*.o -lpthread -lcurl
 LINK_RET=$?
 
+# Clean up transient intermediate object files
+for tmp in "${tmp_files[@]}"; do
+    rm -f "$tmp"
+done
+
 exit $LINK_RET
