@@ -132,10 +132,9 @@ fi
 # Determine extra flags for macOS (Homebrew prefixes)
 EXTRA_CFLAGS=""
 EXTRA_LDFLAGS=""
-if [ "$(uname -s)" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
-    BREW_PREFIX=$(brew --prefix)
-    EXTRA_CFLAGS="-I$BREW_PREFIX/include"
-    EXTRA_LDFLAGS="-L$BREW_PREFIX/lib"
+if [ "$(uname -s)" = "Darwin" ]; then
+    EXTRA_CFLAGS="-I/opt/homebrew/include -I/usr/local/include"
+    EXTRA_LDFLAGS="-L/opt/homebrew/lib -L/usr/local/lib"
 fi
 
 # Compile all C runtime files
