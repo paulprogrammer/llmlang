@@ -1,0 +1,77 @@
+// HTTPS Client and JSON Parsing Test utilizing httpbin.org
+I http post
+I json parse
+I json stringify
+I json get_int
+I json get_str
+I json get_obj
+I json get_arr
+I json arr_len
+I json arr_get
+
+: main
+    L url "https://httpbin.org/post"
+    L payload "data={\"code\":200,\"status\":\"ok\",\"data\":{\"user\":\"Alice\",\"hobbies\":[\"reading\",\"coding\"]}}"
+
+    // Send HTTPS POST request
+    L res @2 post $ url $ payload
+
+    // Parse the response
+    L root @1 parse $ res
+    . ? = root 0 ! "Failed to parse response" 0
+
+    // Get "form" object from the response
+    L k_form "form"
+    L form_obj @2 get_obj $ root $ k_form
+    . ? = form_obj 0 ! "missing form object in response" 0
+
+    // Get the inner JSON string from the "data" field in form
+    L k_data "data"
+    L inner_json_str @2 get_str form_obj $ k_data
+    . ? = inner_json_str 0 ! "missing data field in form" 0
+
+    // Parse the inner JSON string
+    L json_obj @1 parse $ inner_json_str
+    . ? = json_obj 0 ! "Failed to parse inner JSON" 0
+
+    // Bind keys to variables to ensure zero leaks in Valgrind (affine type auto-drop)
+    L k_code "code"
+    L k_status "status"
+    L k_ok "ok"
+    L k_data_inner "data"
+    L k_user "user"
+    L k_alice "Alice"
+    L k_hobbies "hobbies"
+    L k_reading "\"reading\""
+    L k_coding "\"coding\""
+
+    // Check parsed values inside the echoed "json" object
+    L code @2 get_int json_obj $ k_code
+    . ? = code 200 0 ! "code mismatch"
+
+    L status @2 get_str json_obj $ k_status
+    . ? sr $ status $ k_ok 0 ! "status mismatch"
+
+    // Get nested data object
+    L data @2 get_obj json_obj $ k_data_inner
+    . ? = data 0 ! "missing data object" 0
+
+    L user @2 get_str data $ k_user
+    . ? sr $ user $ k_alice 0 ! "user mismatch"
+
+    // Get hobbies array
+    L hobbies @2 get_arr data $ k_hobbies
+    . ? = hobbies 0 ! "missing hobbies array" 0
+
+    L len @1 arr_len hobbies
+    . ? = len 2 0 ! "hobbies length mismatch"
+
+    L h0_val @2 arr_get hobbies 0
+    L h0 @1 stringify h0_val
+    . ? sr $ h0 $ k_reading 0 ! "hobby 0 mismatch"
+
+    L h1_val @2 arr_get hobbies 1
+    L h1 @1 stringify h1_val
+    . ? sr $ h1 $ k_coding 0 ! "hobby 1 mismatch"
+
+    0
