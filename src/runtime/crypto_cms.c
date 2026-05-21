@@ -1,6 +1,7 @@
 #include "common.h"
 #include <mbedtls/asn1.h>
 #include <mbedtls/pk.h>
+#include <mbedtls/version.h>
 #include <mbedtls/cipher.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
@@ -79,8 +80,12 @@ long cms_unwrap(long env_ptr, long key_ptr) {
         return 0;
     }
 
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000
     ret = mbedtls_pk_parse_key(&pk, (const unsigned char*)rsa_key_str, strlen(rsa_key_str) + 1, NULL, 0,
                                mbedtls_ctr_drbg_random, &ctr_drbg);
+#else
+    ret = mbedtls_pk_parse_key(&pk, (const unsigned char*)rsa_key_str, strlen(rsa_key_str) + 1, NULL, 0);
+#endif
     
     if (ret != 0) {
         free_rng(&entropy, &ctr_drbg);

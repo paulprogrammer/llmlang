@@ -5,6 +5,7 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/x509_crt.h>
 #include <mbedtls/pk.h>
+#include <mbedtls/version.h>
 #include <mbedtls/error.h>
 #include <errno.h>
 
@@ -77,8 +78,12 @@ void* llm_tls_config_init(const char* cert_str, const char* key_str, int enable_
         return NULL; // Failed to parse cert
     }
 
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000
     if (mbedtls_pk_parse_key(&config->key, (const unsigned char*)key_str, strlen(key_str) + 1, NULL, 0,
                              mbedtls_ctr_drbg_random, &config->rng.ctr_drbg) != 0) {
+#else
+    if (mbedtls_pk_parse_key(&config->key, (const unsigned char*)key_str, strlen(key_str) + 1, NULL, 0) != 0) {
+#endif
         return NULL; // Failed to parse key
     }
 

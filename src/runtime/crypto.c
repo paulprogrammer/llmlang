@@ -1,5 +1,6 @@
 #include "common.h"
 #include <mbedtls/pk.h>
+#include <mbedtls/version.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/md.h>
@@ -38,8 +39,12 @@ long crypto_sign(long key_ptr, long data_ptr) {
     }
 
     // Parse private key (supports PEM and DER)
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000
     int ret = mbedtls_pk_parse_key(&pk, (const unsigned char*)key_str, strlen(key_str) + 1, NULL, 0,
                                    mbedtls_ctr_drbg_random, &ctr_drbg);
+#else
+    int ret = mbedtls_pk_parse_key(&pk, (const unsigned char*)key_str, strlen(key_str) + 1, NULL, 0);
+#endif
     if (ret != 0) {
         free_rng(&entropy, &ctr_drbg);
         mbedtls_pk_free(&pk);
@@ -59,8 +64,13 @@ long crypto_sign(long key_ptr, long data_ptr) {
     unsigned char sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
     size_t sig_len = 0;
 
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000
     ret = mbedtls_pk_sign(&pk, MBEDTLS_MD_SHA256, hash, sizeof(hash), sig, sizeof(sig), &sig_len,
                           mbedtls_ctr_drbg_random, &ctr_drbg);
+#else
+    ret = mbedtls_pk_sign(&pk, MBEDTLS_MD_SHA256, hash, sizeof(hash), sig, &sig_len,
+                          mbedtls_ctr_drbg_random, &ctr_drbg);
+#endif
 
     free_rng(&entropy, &ctr_drbg);
     mbedtls_pk_free(&pk);
