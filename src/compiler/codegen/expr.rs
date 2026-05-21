@@ -202,7 +202,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let col_ptr_int = self.as_int(col_ptr_int_val);
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                 let ptr_to_element = unsafe { self.builder.build_gep(llvm_field_type, col_ptr, &[index], "gep").unwrap() };
-                self.builder.build_load(llvm_field_type, ptr_to_element, "load").unwrap()
+                let loaded = self.builder.build_load(llvm_field_type, ptr_to_element, "load").unwrap();
+                self.maybe_drop_val(instance_expr, struct_ptr_val, stack);
+                loaded
             }
             Expr::Set(instance_expr, field_name, index_expr, value_expr) => {
                 let struct_ptr_val = self.gen_expr(instance_expr, stack, expand_map);
@@ -244,6 +246,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                 let ptr_to_element = unsafe { self.builder.build_gep(llvm_field_type, col_ptr, &[index], "gep").unwrap() };
                 self.builder.build_store(ptr_to_element, value).unwrap();
+                self.maybe_drop_val(instance_expr, struct_ptr_val, stack);
                 value
             }
             Expr::If(cond_expr, true_expr, false_expr) => {
@@ -310,24 +313,56 @@ impl<'ctx> CodeGen<'ctx> {
                     if let Some((params, body)) = template_opt {
                         let initial_stack_len = stack.len();
                         let mut new_expand_map = HashMap::new();
+                        let mut is_owned = Vec::new();
                         for (param, (val, arg_expr)) in params.iter().zip(args_vals.into_iter().zip(args.iter())) {
-                            stack.push(StackItem { value: val, state: VariableState::Available, shape: self.infer_shape(arg_expr, stack), is_ptr: arg_expr.returns_ptr() });
+                            let stack_ptrs: Vec<bool> = stack.iter().map(|item| item.is_ptr).collect();
+                            let is_ptr = arg_expr.returns_ptr_with_stack(&stack_ptrs, &self.fn_returns_ptr.borrow());
+                            stack.push(StackItem { value: val, state: VariableState::Available, shape: self.infer_shape(arg_expr, stack), is_ptr });
+                            is_owned.push(self.is_owned_ptr(arg_expr, stack));
                             if param.expand {
                                 new_expand_map.insert(param.name.clone(), stack.len() - 1);
                             }
                         }
                         let res = self.gen_expr(&body, stack, &new_expand_map);
-                        stack.truncate(initial_stack_len);
+                        for (param_item, owned) in stack.drain(initial_stack_len..).zip(is_owned.into_iter()) {
+                            if owned && param_item.state == VariableState::Available {
+                                self.emit_auto_drop(param_item.value, param_item.shape.as_deref(), param_item.is_ptr);
+                            }
+                        }
                         res
                     } else {
                         let function = self.module.get_function(&final_func_name).expect("E010");
                         let mut call_args = Vec::new();
-                        for val in args_vals {
-                            call_args.push(val.into());
+                        
+                        let is_ffi = if let Some(module) = self.imports.borrow().get(name) {
+                            module == "crypto" || module == "cms" || module == "file" || module == "http" || module == "json"
+                        } else {
+                            false
+                        };
+                        let is_user_defined = !is_ffi;
+
+                        for (arg, val) in args.iter().zip(args_vals.clone().into_iter()) {
+                            let mut final_val = val;
+                            if is_user_defined && matches!(arg, Expr::Borrow(_) | Expr::MutBorrow(_)) {
+                                let stack_ptrs: Vec<bool> = stack.iter().map(|item| item.is_ptr).collect();
+                                if arg.returns_ptr_with_stack(&stack_ptrs, &self.fn_returns_ptr.borrow()) {
+                                    let dup_fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
+                                    let dup_fn = self.get_or_add_external_fn("llm_dup", dup_fn_type);
+                                    let call = self.builder.build_call(dup_fn, &[val.into()], "dup_val").unwrap();
+                                    final_val = self.get_call_res(call);
+                                }
+                            }
+                            call_args.push(final_val.into());
                         }
                         let call = self.builder.build_call(function, &call_args, "calltmp").unwrap();
                         call.set_tail_call(true);
-                        self.get_call_res(call)
+                        let res = self.get_call_res(call);
+                        if is_ffi {
+                            for (arg, val) in args.iter().zip(args_vals.into_iter()) {
+                                self.maybe_drop_val(arg, val, stack);
+                            }
+                        }
+                        res
                     }
                 } else {
                     panic!("E012");
@@ -344,7 +379,9 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Let(_name, val_expr, body_expr) => {
                 let val = self.gen_expr(val_expr, stack, expand_map);
                 let shape = self.infer_shape(val_expr, stack);
-                stack.push(StackItem { value: val, state: VariableState::Available, shape, is_ptr: val_expr.returns_ptr() });
+                let stack_ptrs: Vec<bool> = stack.iter().map(|item| item.is_ptr).collect();
+                let is_ptr = val_expr.returns_ptr_with_stack(&stack_ptrs, &self.fn_returns_ptr.borrow());
+                stack.push(StackItem { value: val, state: VariableState::Available, shape, is_ptr });
                 let res = self.gen_expr(body_expr, stack, expand_map);
                 let item = stack.pop().unwrap();
                 if item.state == VariableState::Available {
@@ -371,16 +408,25 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_cat", fn_type);
                 let call = self.builder.build_call(func, &[l_val.into(), r_val.into()], "cat").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(l, l_val, stack);
+                self.maybe_drop_val(r, r_val, stack);
+                res
             }
             Expr::Sub(s, b, l) => {
                 let s_val = self.gen_expr(s, stack, expand_map);
                 let b_val = self.gen_expr(b, stack, expand_map);
                 let l_val = self.gen_expr(l, stack, expand_map);
-                let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into(), self.context.i64_type().into()], false);
+                let fn_type = self.context.i64_type().fn_type(&[
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(),
+                ], false);
                 let func = self.get_or_add_external_fn("llm_sub", fn_type);
                 let call = self.builder.build_call(func, &[s_val.into(), b_val.into(), l_val.into()], "sub").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(s, s_val, stack);
+                res
             }
             Expr::Loc(s, p) => {
                 let s_val = self.gen_expr(s, stack, expand_map);
@@ -388,7 +434,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_loc", fn_type);
                 let call = self.builder.build_call(func, &[s_val.into(), p_val.into()], "loc").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(s, s_val, stack);
+                self.maybe_drop_val(p, p_val, stack);
+                res
             }
             Expr::Reg(s, r) => {
                 let s_val = self.gen_expr(s, stack, expand_map);
@@ -396,14 +445,19 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_reg", fn_type);
                 let call = self.builder.build_call(func, &[s_val.into(), r_val.into()], "reg").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(s, s_val, stack);
+                self.maybe_drop_val(r, r_val, stack);
+                res
             }
             Expr::Read(h) => {
                 let h_val = self.gen_expr(h, stack, expand_map);
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_read", fn_type);
                 let call = self.builder.build_call(func, &[h_val.into()], "read").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(h, h_val, stack);
+                res
             }
             Expr::Write(h, s) => {
                 let h_val = self.gen_expr(h, stack, expand_map);
@@ -411,14 +465,19 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_write", fn_type);
                 let call = self.builder.build_call(func, &[h_val.into(), s_val.into()], "write").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(h, h_val, stack);
+                self.maybe_drop_val(s, s_val, stack);
+                res
             }
             Expr::Str(e) => {
                 let val = self.gen_expr(e, stack, expand_map);
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_itoa", fn_type);
                 let call = self.builder.build_call(func, &[val.into()], "itoa").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(e, val, stack);
+                res
             }
             Expr::Split(s, d, i) => {
                 let s_val = self.gen_expr(s, stack, expand_map);
@@ -427,7 +486,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_split", fn_type);
                 let call = self.builder.build_call(func, &[s_val.into(), d_val.into(), i_val.into()], "split").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(s, s_val, stack);
+                self.maybe_drop_val(d, d_val, stack);
+                res
             }
             Expr::TimeNow => {
                 let fn_type = self.context.i64_type().fn_type(&[], false);
@@ -447,7 +509,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_tai_get", fn_type);
                 let call = self.builder.build_call(func, &[t_val.into(), i_val.into()], "get").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(t, t_val, stack);
+                res
             }
             Expr::TimeSet(y, m, d, h, mn, s) => {
                 let y_val = self.gen_expr(y, stack, expand_map);
@@ -460,14 +524,23 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = i64_type.fn_type(&[i64_type.into(); 6], false);
                 let func = self.get_or_add_external_fn("llm_tai_set", fn_type);
                 let call = self.builder.build_call(func, &[y_val.into(), m_val.into(), d_val.into(), h_val.into(), mn_val.into(), s_val.into()], "set").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(y, y_val, stack);
+                self.maybe_drop_val(m, m_val, stack);
+                self.maybe_drop_val(d, d_val, stack);
+                self.maybe_drop_val(h, h_val, stack);
+                self.maybe_drop_val(mn, mn_val, stack);
+                self.maybe_drop_val(s, s_val, stack);
+                res
             }
             Expr::Env(k) => {
                 let k_val = self.gen_expr(k, stack, expand_map);
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_getenv", fn_type);
                 let call = self.builder.build_call(func, &[k_val.into()], "getenv").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(k, k_val, stack);
+                res
             }
             Expr::HttpClient(method, url, body) => {
                 let method_val = self.gen_expr(method, stack, expand_map);
@@ -480,7 +553,11 @@ impl<'ctx> CodeGen<'ctx> {
                 ], false);
                 let func = self.get_or_add_external_fn("llm_http_client", fn_type);
                 let call = self.builder.build_call(func, &[method_val.into(), url_val.into(), body_val.into()], "http_client").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(method, method_val, stack);
+                self.maybe_drop_val(url, url_val, stack);
+                self.maybe_drop_val(body, body_val, stack);
+                res
             }
             Expr::HttpServer(op, arg) => {
                 let op_val = self.gen_expr(op, stack, expand_map);
@@ -491,10 +568,28 @@ impl<'ctx> CodeGen<'ctx> {
                 ], false);
                 let func = self.get_or_add_external_fn("llm_http_server", fn_type);
                 let call = self.builder.build_call(func, &[op_val.into(), arg_val.into()], "http_server").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(op, op_val, stack);
+                self.maybe_drop_val(arg, arg_val, stack);
+                res
+            }
+            Expr::FileOpen(path, mode) => {
+                let path_val = self.gen_expr(path, stack, expand_map);
+                let mode_val = self.gen_expr(mode, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(),
+                ], false);
+                let func = self.get_or_add_external_fn("llm_file_open", fn_type);
+                let call = self.builder.build_call(func, &[path_val.into(), mode_val.into()], "file_open").unwrap();
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(path, path_val, stack);
+                self.maybe_drop_val(mode, mode_val, stack);
+                res
             }
             Expr::Seq(e1, e2) => {
-                self.gen_expr(e1, stack, expand_map);
+                let v1 = self.gen_expr(e1, stack, expand_map);
+                self.maybe_drop_val(e1, v1, stack);
                 self.gen_expr(e2, stack, expand_map)
             }
             Expr::Pack(e) => {
@@ -509,7 +604,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_pack", fn_type);
                 let call = self.builder.build_call(func, &[val_int.into(), fields_int.into()], "json").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(e, val, stack);
+                res
             }
             Expr::Unpack(e, shape_name) => {
                 let json_val = self.gen_expr(e, stack, expand_map);
@@ -521,7 +618,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = self.context.i64_type().fn_type(&[self.context.i64_type().into(), self.context.i64_type().into()], false);
                 let func = self.get_or_add_external_fn("llm_unpack", fn_type);
                 let call = self.builder.build_call(func, &[json_val.into(), fields_int.into()], "inst").unwrap();
-                self.get_call_res(call)
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(e, json_val, stack);
+                res
             }
             Expr::Map(inst_expr, field_name, func_expr) => {
                 let inst_ptr_val = self.gen_expr(inst_expr, stack, expand_map);
@@ -603,6 +702,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(i_ptr, self.builder.build_int_add(i, self.context.i64_type().const_int(1, false), "next_i").unwrap()).unwrap();
                 self.builder.build_unconditional_branch(loop_bb).unwrap();
                 self.builder.position_at_end(after_bb);
+                self.maybe_drop_val(inst_expr, inst_ptr_val, stack);
                 new_inst_ptr_int.into()
             }
             Expr::Filter(inst_expr, func_expr) => {
@@ -734,6 +834,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(i_ptr, self.builder.build_int_add(i2, self.context.i64_type().const_int(1, false), "next_i").unwrap()).unwrap();
                 self.builder.build_unconditional_branch(copy_loop_bb).unwrap();
                 self.builder.position_at_end(copy_after_bb);
+                self.maybe_drop_val(inst_expr, inst_ptr_val, stack);
                 new_inst_ptr_int.into()
             }
             Expr::MoneyOp(op, left, right) => {
@@ -824,4 +925,26 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
     }
+
+    fn is_owned_ptr(&self, expr: &Expr, stack: &[StackItem<'ctx>]) -> bool {
+        let stack_ptrs: Vec<bool> = stack.iter().map(|item| item.is_ptr).collect();
+        if !expr.returns_ptr_with_stack(&stack_ptrs, &self.fn_returns_ptr.borrow()) {
+            return false;
+        }
+        match expr {
+            Expr::Borrow(_) | Expr::MutBorrow(_) => false,
+            Expr::DeBruijn(_) => false,
+            Expr::Expand(_) => false,
+            Expr::Move(_) => true,
+            _ => true,
+        }
+    }
+
+    fn maybe_drop_val(&self, expr: &Expr, val: BasicValueEnum<'ctx>, stack: &[StackItem<'ctx>]) {
+        if self.is_owned_ptr(expr, stack) {
+            let shape = self.infer_shape(expr, stack);
+            self.emit_auto_drop(val, shape.as_deref(), true);
+        }
+    }
 }
+

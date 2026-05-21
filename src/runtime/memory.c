@@ -27,6 +27,8 @@ void llm_drop(long s) {
     if (s <= 1000) return;
     LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
     if (header->magic == 0x4C4C4D52) {
+        header->ref_cnt--;
+        if (header->ref_cnt > 0) return;
         header->magic = 0; // Prevent double drop!
         switch (header->type) {
             case RT_TYPE_JSON: {
@@ -41,6 +43,32 @@ void llm_drop(long s) {
                 }
                 break;
             }
+            case RT_TYPE_FILE: {
+                LlmFile* lf = (LlmFile*)s;
+                if (lf->fp) {
+                    fclose(lf->fp);
+                    lf->fp = NULL;
+                }
+                break;
+            }
+            case RT_TYPE_TLS_CONFIG: {
+                if (llm_drop_tls_config) {
+                    llm_drop_tls_config(s);
+                }
+                break;
+            }
+            case RT_TYPE_TLS_CTX: {
+                if (llm_drop_tls_ctx) {
+                    llm_drop_tls_ctx(s);
+                }
+                break;
+            }
+            case RT_TYPE_CRYPTO_KEY: {
+                if (llm_drop_crypto_key) {
+                    llm_drop_crypto_key(s);
+                }
+                break;
+            }
             case RT_TYPE_STRING:
             case RT_TYPE_RAW:
             default:
@@ -48,6 +76,15 @@ void llm_drop(long s) {
         }
         free(header);
     }
+}
+
+long llm_dup(long s) {
+    if (s <= 1000) return s;
+    LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
+    if (header->magic == 0x4C4C4D52) {
+        header->ref_cnt++;
+    }
+    return s;
 }
 
 

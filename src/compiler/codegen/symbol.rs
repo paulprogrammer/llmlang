@@ -143,12 +143,14 @@ impl<'ctx> CodeGen<'ctx> {
         let basic_block = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(basic_block);
         let mut stack = Vec::new();
+        let param_ptrs = self.fn_param_ptrs.borrow().get(name).cloned().unwrap_or_else(|| vec![false; arg_count]);
         for i in 0..arg_count {
+            let is_ptr = param_ptrs.get(i).copied().unwrap_or(false);
             stack.push(StackItem {
                 value: function.get_nth_param(i as u32).unwrap(),
                 state: VariableState::Available,
                 shape: None,
-                is_ptr: false, 
+                is_ptr, 
             });
         }
         let ret_val = self.gen_expr(body, &mut stack, &HashMap::new());
@@ -229,5 +231,236 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
         sig
+    }
+
+    pub fn analyze_module_types(&self, exprs: &[Expr]) {
+        let mut fn_returns_ptr = self.fn_returns_ptr.borrow_mut();
+        let mut fn_param_ptrs = self.fn_param_ptrs.borrow_mut();
+        
+        // 1. Initialize user-defined functions
+        for expr in exprs {
+            if let Expr::Define(name, params, _, _) = expr {
+                fn_returns_ptr.insert(name.clone(), false);
+                let mangled = self.mangle_name(name);
+                let resolved = self.resolve_func_name(name);
+                fn_returns_ptr.insert(mangled.clone(), false);
+                fn_returns_ptr.insert(resolved.clone(), false);
+                
+                fn_param_ptrs.insert(name.clone(), vec![false; params.len()]);
+                fn_param_ptrs.insert(mangled.clone(), vec![false; params.len()]);
+                fn_param_ptrs.insert(resolved.clone(), vec![false; params.len()]);
+            }
+        }
+        
+        // 2. Iterate to fixed point
+        let mut changed = true;
+        let mut iterations = 0;
+        while changed && iterations < 100 {
+            changed = false;
+            iterations += 1;
+            
+            for expr in exprs {
+                if let Expr::Define(name, params, body, _) = expr {
+                    let mangled = self.mangle_name(name);
+                    let resolved = self.resolve_func_name(name);
+                    
+                    let current_params = fn_param_ptrs.get(name).cloned().unwrap_or_else(|| vec![false; params.len()]);
+                    
+                    // Run a recursive constraints check on body
+                    let mut stack_ptrs = current_params.clone();
+                    let mut new_params = current_params.clone();
+                    
+                    self.infer_constraints(body, &mut stack_ptrs, &mut new_params, &fn_returns_ptr, &fn_param_ptrs);
+                    
+                    if new_params != current_params {
+                        fn_param_ptrs.insert(name.clone(), new_params.clone());
+                        fn_param_ptrs.insert(mangled.clone(), new_params.clone());
+                        fn_param_ptrs.insert(resolved.clone(), new_params.clone());
+                        changed = true;
+                    }
+                    
+                    // Determine if the body returns a pointer
+                    let returns_ptr = body.returns_ptr_with_stack(&fn_param_ptrs.get(name).unwrap(), &fn_returns_ptr);
+                    if returns_ptr {
+                        if fn_returns_ptr.get(name) != Some(&true) {
+                            fn_returns_ptr.insert(name.clone(), true);
+                            fn_returns_ptr.insert(mangled.clone(), true);
+                            fn_returns_ptr.insert(resolved.clone(), true);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn infer_constraints(
+        &self,
+        expr: &Expr,
+        stack_ptrs: &mut Vec<bool>,
+        param_ptrs: &mut Vec<bool>,
+        fn_returns_ptr: &HashMap<String, bool>,
+        fn_param_ptrs: &HashMap<String, Vec<bool>>,
+    ) {
+        match expr {
+            Expr::Let(_, val_expr, body_expr) => {
+                self.infer_constraints(val_expr, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                let val_ptr = val_expr.returns_ptr_with_stack(stack_ptrs, fn_returns_ptr);
+                stack_ptrs.push(val_ptr);
+                self.infer_constraints(body_expr, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                stack_ptrs.pop();
+            }
+            Expr::Seq(l, r) => {
+                self.infer_constraints(l, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(r, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::If(c, t, f) => {
+                self.infer_constraints(c, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(t, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(f, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Move(e) | Expr::Borrow(e) | Expr::MutBorrow(e) => {
+                self.infer_constraints(e, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Trap(t, f) => {
+                self.infer_constraints(t, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(f, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Cat(l, r) => {
+                self.mark_as_ptr(l, stack_ptrs, param_ptrs);
+                self.mark_as_ptr(r, stack_ptrs, param_ptrs);
+                self.infer_constraints(l, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(r, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Sub(s, b, l) => {
+                self.mark_as_ptr(s, stack_ptrs, param_ptrs);
+                self.infer_constraints(s, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(b, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(l, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Len(e) => {
+                self.mark_as_ptr(e, stack_ptrs, param_ptrs);
+                self.infer_constraints(e, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Loc(s, p) => {
+                self.mark_as_ptr(s, stack_ptrs, param_ptrs);
+                self.mark_as_ptr(p, stack_ptrs, param_ptrs);
+                self.infer_constraints(s, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(p, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Reg(s, r) => {
+                self.mark_as_ptr(s, stack_ptrs, param_ptrs);
+                self.mark_as_ptr(r, stack_ptrs, param_ptrs);
+                self.infer_constraints(s, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(r, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Split(s, d, idx) => {
+                self.mark_as_ptr(s, stack_ptrs, param_ptrs);
+                self.mark_as_ptr(d, stack_ptrs, param_ptrs);
+                self.infer_constraints(s, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(d, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(idx, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Write(h, s) => {
+                self.mark_as_ptr(h, stack_ptrs, param_ptrs);
+                self.mark_as_ptr(s, stack_ptrs, param_ptrs);
+                self.infer_constraints(h, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(s, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Apply(f, args) => {
+                self.infer_constraints(f, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                for arg in args {
+                    self.infer_constraints(arg, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                }
+                if let Expr::Identifier(ref callee_name) = **f {
+                    let resolved = self.resolve_func_name(callee_name);
+                    
+                    if resolved == "verify" || resolved == "crypto_verify" {
+                        if args.len() >= 3 {
+                            self.mark_as_ptr(&args[0], stack_ptrs, param_ptrs);
+                            self.mark_as_ptr(&args[1], stack_ptrs, param_ptrs);
+                            self.mark_as_ptr(&args[2], stack_ptrs, param_ptrs);
+                        }
+                    } else if resolved == "sign" || resolved == "crypto_sign" {
+                        if args.len() >= 2 {
+                            self.mark_as_ptr(&args[0], stack_ptrs, param_ptrs);
+                            self.mark_as_ptr(&args[1], stack_ptrs, param_ptrs);
+                        }
+                    } else if let Some(param_types) = fn_param_ptrs.get(&resolved).or_else(|| fn_param_ptrs.get(callee_name)) {
+                        for (arg, &is_ptr) in args.iter().zip(param_types.iter()) {
+                            if is_ptr {
+                                self.mark_as_ptr(arg, stack_ptrs, param_ptrs);
+                            }
+                        }
+                    }
+                }
+            }
+            Expr::Get(inst, _, idx) => {
+                self.mark_as_ptr(inst, stack_ptrs, param_ptrs);
+                self.infer_constraints(inst, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(idx, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Set(inst, _, idx, val) => {
+                self.mark_as_ptr(inst, stack_ptrs, param_ptrs);
+                self.infer_constraints(inst, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(idx, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(val, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Unpack(expr, _) => {
+                self.mark_as_ptr(expr, stack_ptrs, param_ptrs);
+                self.infer_constraints(expr, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Pack(expr) => {
+                self.mark_as_ptr(expr, stack_ptrs, param_ptrs);
+                self.infer_constraints(expr, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Map(inst, _, func) => {
+                self.mark_as_ptr(inst, stack_ptrs, param_ptrs);
+                self.infer_constraints(inst, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(func, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::Filter(inst, func) => {
+                self.mark_as_ptr(inst, stack_ptrs, param_ptrs);
+                self.infer_constraints(inst, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(func, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::HttpClient(m, u, b) => {
+                self.mark_as_ptr(m, stack_ptrs, param_ptrs);
+                self.mark_as_ptr(u, stack_ptrs, param_ptrs);
+                self.mark_as_ptr(b, stack_ptrs, param_ptrs);
+                self.infer_constraints(m, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(u, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(b, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::HttpServer(_, arg) => {
+                self.mark_as_ptr(arg, stack_ptrs, param_ptrs);
+                self.infer_constraints(arg, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            Expr::FileOpen(p, m) => {
+                self.mark_as_ptr(p, stack_ptrs, param_ptrs);
+                self.mark_as_ptr(m, stack_ptrs, param_ptrs);
+                self.infer_constraints(p, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+                self.infer_constraints(m, stack_ptrs, param_ptrs, fn_returns_ptr, fn_param_ptrs);
+            }
+            _ => {}
+        }
+    }
+
+    fn mark_as_ptr(&self, expr: &Expr, stack_ptrs: &mut [bool], param_ptrs: &mut [bool]) {
+        match expr {
+            Expr::DeBruijn(idx) => {
+                if *idx < stack_ptrs.len() {
+                    let actual_idx = stack_ptrs.len() - 1 - idx;
+                    stack_ptrs[actual_idx] = true;
+                    if actual_idx < param_ptrs.len() {
+                        param_ptrs[actual_idx] = true;
+                    }
+                }
+            }
+            Expr::Move(e) | Expr::Borrow(e) | Expr::MutBorrow(e) => {
+                self.mark_as_ptr(e, stack_ptrs, param_ptrs);
+            }
+            _ => {}
+        }
     }
 }

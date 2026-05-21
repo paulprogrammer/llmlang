@@ -5,6 +5,8 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <curl/curl.h>
+#include <poll.h>
+#include "picohttpparser.h"
 
 struct ResponseBuffer {
     char* data;
@@ -116,7 +118,25 @@ static long listen_server(const char* port_str) {
     HttpServer* server = (HttpServer*)llm_rt_alloc(sizeof(HttpServer), RT_TYPE_SOCKET);
     server->type = 1;
     server->fd = fd;
+    server->tls_config = NULL;
     return (long)server;
+}
+
+long llm_https_server(long port_ptr, long cert_ptr, long key_ptr, long legacy) {
+    long server_ptr = listen_server((char*)port_ptr);
+    if (!server_ptr) return 0;
+    
+    HttpServer* server = (HttpServer*)server_ptr;
+    server->tls_config = llm_tls_config_init((char*)cert_ptr, (char*)key_ptr, (int)legacy);
+    
+    if (!server->tls_config) {
+        close(server->fd);
+        server->fd = -1;
+        // The garbage collector will free the server object
+        return 0;
+    }
+    
+    return server_ptr;
 }
 
 long llm_http_server(long op, long arg) {
@@ -144,6 +164,13 @@ long llm_http_server(long op, long arg) {
     return 0;
 }
 
+static char* dup_token(const char* ptr, size_t len) {
+    char* res = llm_rt_alloc(len + 1, RT_TYPE_STRING);
+    memcpy(res, ptr, len);
+    res[len] = '\0';
+    return res;
+}
+
 long llm_http_server_accept(HttpServer* server) {
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
@@ -152,88 +179,138 @@ long llm_http_server_accept(HttpServer* server) {
         return 0;
     }
 
+    struct pollfd pfd;
+    pfd.fd = client_fd;
+    pfd.events = POLLIN;
+
+    void* tls_ctx = NULL;
+    if (server->tls_config) {
+        // Safe to cast client_fd directly but we pass a pointer since mbedtls bio needs it.
+        // We will store client_fd in req and pass &req->client_fd to llm_tls_ctx_init.
+    }
+
     size_t buf_size = 4096;
     char* buf = malloc(buf_size);
     size_t total_read = 0;
+    
+    HttpRequest* req = (HttpRequest*)llm_rt_alloc(sizeof(HttpRequest), RT_TYPE_SOCKET);
+    req->type = 2;
+    req->client_fd = client_fd;
+    req->method = NULL;
+    req->path = NULL;
+    req->body = NULL;
+    req->tls_ctx = NULL;
+
+    if (server->tls_config) {
+        req->tls_ctx = llm_tls_ctx_init(server->tls_config, &req->client_fd);
+        if (!req->tls_ctx || llm_tls_handshake(req->tls_ctx) != 0) {
+            free(buf);
+            llm_drop((long)req); // This safely cleans up the fd and tls_ctx
+            return 0;
+        }
+    }
+
     while (1) {
-        ssize_t bytes = read(client_fd, buf + total_read, buf_size - total_read - 1);
+        int poll_ret = poll(&pfd, 1, 5000); // 5 seconds timeout
+        if (poll_ret <= 0) {
+            free(buf);
+            llm_drop((long)req);
+            return 0;
+        }
+
+        ssize_t bytes;
+        if (req->tls_ctx) {
+            bytes = llm_tls_read(req->tls_ctx, (unsigned char*)(buf + total_read), buf_size - total_read - 1);
+        } else {
+            bytes = read(req->client_fd, buf + total_read, buf_size - total_read - 1);
+        }
         if (bytes <= 0) {
             break;
         }
+        size_t prev_read = total_read;
         total_read += bytes;
         buf[total_read] = '\0';
 
-        char* header_end = strstr(buf, "\r\n\r\n");
-        if (header_end) {
-            char* content_length_ptr = strcasestr(buf, "Content-Length:");
-            if (content_length_ptr) {
-                int content_len = atoi(content_length_ptr + 15);
-                size_t header_len = (header_end + 4) - buf;
-                if (total_read >= header_len + content_len) {
+        const char *method = NULL;
+        size_t method_len = 0;
+        const char *path = NULL;
+        size_t path_len = 0;
+        int minor_version = 0;
+        struct phr_header headers[100];
+        size_t num_headers = sizeof(headers) / sizeof(headers[0]);
+
+        int pret = phr_parse_request(buf, total_read, &method, &method_len, &path, &path_len,
+                                     &minor_version, headers, &num_headers, prev_read);
+        if (pret > 0) {
+            size_t content_len = 0;
+            int has_content_length = 0;
+            for (size_t i = 0; i < num_headers; ++i) {
+                if (headers[i].name != NULL && strncasecmp(headers[i].name, "Content-Length", headers[i].name_len) == 0) {
+                    char val_buf[64];
+                    size_t val_len = headers[i].value_len < 63 ? headers[i].value_len : 63;
+                    memcpy(val_buf, headers[i].value, val_len);
+                    val_buf[val_len] = '\0';
+                    content_len = strtoul(val_buf, NULL, 10);
+                    has_content_length = 1;
                     break;
                 }
-            } else {
-                break;
             }
+
+            if (has_content_length) {
+                size_t header_len = (size_t)pret;
+                if (total_read < header_len + content_len) {
+                    if (header_len + content_len >= buf_size - 1) {
+                        buf_size = header_len + content_len + 1024;
+                        buf = realloc(buf, buf_size);
+                    }
+                    continue;
+                }
+            }
+
+            char* method_str = dup_token(method, method_len);
+            char* path_str = dup_token(path, path_len);
+            char* body_str = NULL;
+            if (has_content_length) {
+                size_t header_len = (size_t)pret;
+                body_str = dup_token(buf + header_len, content_len);
+            } else {
+                body_str = dup_token("", 0);
+            }
+
+
+            req->method = method_str;
+            req->path = path_str;
+            req->body = body_str;
+
+            free(buf);
+            return (long)req;
+
+        } else if (pret == -1) {
+            free(buf);
+            llm_drop((long)req);
+            return 0;
         }
 
+        // pret == -2: partial request
         if (total_read >= buf_size - 1) {
             buf_size *= 2;
             buf = realloc(buf, buf_size);
         }
     }
 
-    char* first_line_end = strchr(buf, '\r');
-    if (!first_line_end) first_line_end = strchr(buf, '\n');
-
-    char* method_str = "";
-    char* path_str = "";
-    char* body_str = "";
-
-    if (first_line_end) {
-        size_t first_line_len = first_line_end - buf;
-        char* first_line = malloc(first_line_len + 1);
-        memcpy(first_line, buf, first_line_len);
-        first_line[first_line_len] = '\0';
-
-        char* p1 = strchr(first_line, ' ');
-        if (p1) {
-            *p1 = '\0';
-            method_str = first_line;
-            char* path_start = p1 + 1;
-            char* p2 = strchr(path_start, ' ');
-            if (p2) {
-                *p2 = '\0';
-            }
-            path_str = path_start;
-        }
-        
-        char* double_crlf = strstr(buf, "\r\n\r\n");
-        if (double_crlf) {
-            body_str = double_crlf + 4;
-        } else {
-            char* double_lf = strstr(buf, "\n\n");
-            if (double_lf) {
-                body_str = double_lf + 2;
-            }
-        }
-
-        HttpRequest* req = (HttpRequest*)llm_rt_alloc(sizeof(HttpRequest), RT_TYPE_SOCKET);
-        req->type = 2;
-        req->client_fd = client_fd;
-        req->method = llm_rt_strdup(method_str);
-        req->path = llm_rt_strdup(path_str);
-        req->body = llm_rt_strdup(body_str);
-
-        free(first_line);
-        free(buf);
-        return (long)req;
-    }
-
     free(buf);
-    close(client_fd);
+    llm_drop((long)req);
     return 0;
 }
+
+static void http_write(HttpRequest* req, const char* data, size_t len) {
+    if (req->tls_ctx) {
+        llm_tls_write(req->tls_ctx, (const unsigned char*)data, len);
+    } else {
+        write(req->client_fd, data, len);
+    }
+}
+
 
 long llm_http_server_respond(HttpRequest* req, char* data_str) {
     if (!req || req->client_fd < 0) return 0;
@@ -241,7 +318,7 @@ long llm_http_server_respond(HttpRequest* req, char* data_str) {
     if (!data_str) data_str = "";
 
     if (strncmp(data_str, "HTTP/1.", 7) == 0) {
-        write(req->client_fd, data_str, strlen(data_str));
+        http_write(req, data_str, strlen(data_str));
     } else {
         const char* content_type = "text/plain";
         char* p = data_str;
@@ -261,13 +338,13 @@ long llm_http_server_respond(HttpRequest* req, char* data_str) {
             "\r\n",
             content_type, strlen(data_str));
 
-        write(req->client_fd, header_buf, header_len);
-        write(req->client_fd, data_str, strlen(data_str));
+
+        http_write(req, header_buf, header_len);
+        http_write(req, data_str, strlen(data_str));
     }
 
     close(req->client_fd);
     req->client_fd = -1;
-    llm_drop((long)req);
     return 1;
 }
 
@@ -279,8 +356,16 @@ void llm_drop_socket(long s) {
             close(server->fd);
             server->fd = -1;
         }
+        if (server->tls_config) {
+            llm_drop((long)server->tls_config);
+            server->tls_config = NULL;
+        }
     } else if (*sub_type == 2) { // HttpRequest
         HttpRequest* req = (HttpRequest*)s;
+        if (req->tls_ctx) {
+            llm_drop((long)req->tls_ctx);
+            req->tls_ctx = NULL;
+        }
         if (req->client_fd >= 0) {
             close(req->client_fd);
             req->client_fd = -1;
@@ -298,5 +383,21 @@ void llm_drop_socket(long s) {
             req->body = NULL;
         }
     }
+}
+
+long http_serve(long port_ptr) {
+    return llm_http_server(0, port_ptr);
+}
+
+long http_https_serve(long port_ptr, long cert_ptr, long key_ptr, long legacy) {
+    return llm_https_server(port_ptr, cert_ptr, key_ptr, legacy);
+}
+
+long http_accept(long server_ptr) {
+    return llm_http_server_accept((HttpServer*)server_ptr);
+}
+
+long http_respond(long req_ptr, long data_ptr) {
+    return llm_http_server_respond((HttpRequest*)req_ptr, (char*)data_ptr);
 }
 
