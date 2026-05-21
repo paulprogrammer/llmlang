@@ -1,0 +1,26 @@
+// Crypto Integration Test
+I crypto sign
+I crypto verify
+I crypto encrypt
+I crypto decrypt
+
+: main
+    L priv "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIN5MjHDK8Cf0wGogL8Q+i7t/9LlGUcOdHNef0BvTgxIcoAoGCCqGSM49\nAwEHoUQDQgAEwEj0uzk9p43fKTE5c+sJYdHYC6RKfppNSsEwACcGz9E9rwbsrZEb\nkqmGPtjLclRPIDhzT5Qkky2XycEAHniCnw==\n-----END EC PRIVATE KEY-----\n"
+    L key "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwEj0uzk9p43fKTE5c+sJYdHYC6RK\nfppNSsEwACcGz9E9rwbsrZEbkqmGPtjLclRPIDhzT5Qkky2XycEAHniCnw==\n-----END PUBLIC KEY-----\n"
+
+    // Sign and Verify ECDSA
+    L s @2 sign $ priv "hello world"
+    L v @3 verify $ key $ s "hello world"
+    . ? v 0 ! "ECDSA Verification failed"
+
+    // Verify with invalid message should fail (return 0)
+    L v_bad @3 verify $ key $ s "wrong message"
+    . ? v_bad ! "ECDSA Verification bad message check failed" 0
+
+    // AES-GCM Encrypt/Decrypt
+    L aes_key "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    L enc @2 encrypt $ aes_key "secret data"
+    L dec @2 decrypt $ aes_key $ enc
+    . ? sr $ dec "^secret data$" 0 ! "AES-GCM Decryption failed"
+
+    0

@@ -20,7 +20,9 @@ impl Expr {
                     name == "http_get" || name == "http_post" || name == "get" || name == "post" ||
                     name == "json_parse" || name == "parse" ||
                     name == "json_stringify" || name == "stringify" ||
-                    name == "json_get_str" || name == "get_str"
+                    name == "json_get_str" || name == "get_str" ||
+                    name == "sign" || name == "encrypt" || name == "decrypt" || name == "unwrap" ||
+                    name == "serve" || name == "https_serve" || name == "accept"
                 } else {
                     false
                 }

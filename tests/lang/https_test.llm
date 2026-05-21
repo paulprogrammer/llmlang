@@ -1,0 +1,26 @@
+// HTTPS Server Test
+I http https_serve
+I http accept
+I http respond
+
+: main
+    L cert "-----BEGIN CERTIFICATE-----\nMIIBfDCCASOgAwIBAgIUMO2ww7NqAp+Zkk2dwuT2Xy+6lXQwCgYIKoZIzj0EAwIw\nFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDUyMTE5NTUyOVoXDTI3MDUyMTE5\nNTUyOVowFDESMBAGA1UEAwwJbG9jYWxob3N0MFkwEwYHKoZIzj0CAQYIKoZIzj0D\nAQcDQgAEA0E3pBZk8bnFQ7ePcuDWMIkGt1UFz3gM1Ny2xjm2ge4UJdP1a5aoGx8J\n5MkRXrEraFtaNlkbyVuOcd+QLGuEmqNTMFEwHQYDVR0OBBYEFKL/ivt02KkBEY/e\naxLuZ9GT5XKCMB8GA1UdIwQYMBaAFKL/ivt02KkBEY/eaxLuZ9GT5XKCMA8GA1Ud\nEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDRwAwRAIgcDtZA2AsFPh+WoWRk/vd9ZjN\n35DyyXSixheuEqReQzICIHrmrdPBG4l7d8a9c7YunO+JzgKu+ETI0jIqzpcGKrt3\n-----END CERTIFICATE-----\n"
+    L key "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQghqdH9u3l7FeQZsko\n2CIUVsO/2c/3MDjf24nqsd6QyKuhRANCAAQDQTekFmTxucVDt49y4NYwiQa3VQXP\neAzU3LbGObaB7hQl0/VrlqgbHwnkyRFesStoW1o2WRvJW45x35Asa4Sa\n-----END PRIVATE KEY-----\n"
+
+    L server @4 https_serve "8443" $ cert $ key 0
+
+    L req1 @1 accept $ server
+    L path1 srv 2 $ req1
+    L suffix1 sc $ path1 "\n"
+    L log1 sc "Received HTTPS request for: " $ suffix1
+    . ) 1 $ log1
+    L res1 @2 respond > req1 "Hello from llmlang HTTPS server"
+
+    L req2 @1 accept $ server
+    L path2 srv 2 $ req2
+    L suffix2 sc $ path2 "\n"
+    L log2 sc "Received HTTPS request for: " $ suffix2
+    . ) 1 $ log2
+    L res2 @2 respond > req2 "{\"status\":\"ok\"}"
+
+    0

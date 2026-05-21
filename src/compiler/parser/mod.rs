@@ -11,13 +11,19 @@ pub struct FsSignatureResolver;
 impl SignatureResolver for FsSignatureResolver {
     fn resolve(&self, module: &str, import_paths: &[String], filename: &str) -> Result<String, String> {
         if module == "http" {
-            return Ok(": get 1\n: post 2\n".to_string());
+            return Ok(": get 1\n: post 2\n: serve 1\n: https_serve 4\n: accept 1\n: respond 2\n".to_string());
         }
         if module == "json" {
             return Ok(": parse 1\n: stringify 1\n: get_int 2\n: get_float 2\n: get_str 2\n: get_obj 2\n: get_arr 2\n: arr_len 1\n: arr_get 2\n".to_string());
         }
         if module == "file" {
             return Ok(": open 2\n: close 1\n".to_string());
+        }
+        if module == "crypto" {
+            return Ok(": sign 2\n: verify 3\n: encrypt 2\n: decrypt 2\n".to_string());
+        }
+        if module == "cms" {
+            return Ok(": unwrap 2\n".to_string());
         }
         use std::path::Path;
         let sig_filename = format!("{}.llmi", module);

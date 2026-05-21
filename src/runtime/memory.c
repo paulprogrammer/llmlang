@@ -49,6 +49,24 @@ void llm_drop(long s) {
                 }
                 break;
             }
+            case RT_TYPE_TLS_CONFIG: {
+                if (llm_drop_tls_config) {
+                    llm_drop_tls_config(s);
+                }
+                break;
+            }
+            case RT_TYPE_TLS_CTX: {
+                if (llm_drop_tls_ctx) {
+                    llm_drop_tls_ctx(s);
+                }
+                break;
+            }
+            case RT_TYPE_CRYPTO_KEY: {
+                if (llm_drop_crypto_key) {
+                    llm_drop_crypto_key(s);
+                }
+                break;
+            }
             case RT_TYPE_STRING:
             case RT_TYPE_RAW:
             default:
