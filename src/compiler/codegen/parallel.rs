@@ -30,7 +30,10 @@ impl<'ctx> CodeGen<'ctx> {
             task_stack.push(StackItem { value: loaded, state: VariableState::Borrowed, shape: shape.clone(), is_ptr: *is_ptr });
         }
 
+        let old_depth = self.parallel_depth.get();
+        self.parallel_depth.set(old_depth + 1);
         let res = self.gen_expr(expr, &mut task_stack, expand_map);
+        self.parallel_depth.set(old_depth);
         self.builder.build_return(Some(&res)).unwrap();
         self.builder.position_at_end(current_bb);
 

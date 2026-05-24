@@ -354,11 +354,11 @@ fn test_positive_split_op() {
 #[test]
 fn test_positive_auto_parallelism() {
     let context = Context::create();
-    // Threshold is 10. Each '+' adds 5 complexity. 12 nested '+' will be > 10.
+    // Threshold is 10. Each '+' adds 5 complexity. 30 nested '+' will be > 10.
     let mut input = "X : main x ".to_string();
-    for _ in 0..12 { input.push_str("+ "); }
+    for _ in 0..30 { input.push_str("+ "); }
     input.push_str("$ ^0 ");
-    for _ in 0..12 { input.push_str("1 "); }
+    for _ in 0..30 { input.push_str("1 "); }
     let mut parser = new_parser(Lexer::new(&input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config { parallel_threshold: 10, ..llmlang::Config::default() });
     if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }

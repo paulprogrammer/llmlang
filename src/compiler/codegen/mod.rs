@@ -27,6 +27,21 @@ pub struct StackItem<'ctx> {
     pub is_ptr: bool,
 }
 
+fn get_stack_size() -> usize {
+    #[cfg(unix)]
+    unsafe {
+        let mut rlim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        if libc::getrlimit(libc::RLIMIT_STACK, &mut rlim) == 0 {
+            let limit = rlim.rlim_cur as usize;
+            if limit > 0 && limit != libc::RLIM_INFINITY as usize {
+                return limit;
+            }
+        }
+    }
+    // Fallback: 8 MB
+    8 * 1024 * 1024
+}
+
 pub struct CodeGen<'ctx> {
     pub context: &'ctx Context,
     pub module: Module<'ctx>,
@@ -41,6 +56,8 @@ pub struct CodeGen<'ctx> {
     pub imports: std::cell::RefCell<HashMap<String, String>>,
     pub fn_returns_ptr: std::cell::RefCell<HashMap<String, bool>>,
     pub fn_param_ptrs: std::cell::RefCell<HashMap<String, Vec<bool>>>,
+    pub parallel_depth: std::cell::Cell<usize>,
+    pub max_parallel_depth: usize,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -76,6 +93,8 @@ impl<'ctx> CodeGen<'ctx> {
             fn_returns_ptr.insert(f.to_string(), true);
         }
 
+        let max_parallel_depth = (get_stack_size() / 32768).max(1);
+
         Self { 
             context, 
             module, 
@@ -90,6 +109,8 @@ impl<'ctx> CodeGen<'ctx> {
             imports: std::cell::RefCell::new(HashMap::new()),
             fn_returns_ptr: std::cell::RefCell::new(fn_returns_ptr),
             fn_param_ptrs: std::cell::RefCell::new(HashMap::new()),
+            parallel_depth: std::cell::Cell::new(0),
+            max_parallel_depth,
         }
     }
 

@@ -671,6 +671,7 @@ dependencies = [
  "async-trait",
  "hex",
  "inkwell",
+ "libc",
  "mcp-sdk-rs",
  "pest",
  "pest_derive",

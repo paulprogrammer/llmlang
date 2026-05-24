@@ -34,7 +34,7 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::BinaryOp(op, left, right) => {
                 let parallel_threshold = self.config.parallel_threshold;
                 let mut left_handle = None;
-                if left.is_pure() && left.complexity() > parallel_threshold {
+                if self.parallel_depth.get() < self.max_parallel_depth && left.is_pure() && left.complexity() > parallel_threshold {
                     left_handle = Some(self.gen_parallel_expr(left, stack, expand_map));
                 }
                 let lhs_val = if let Some(handle) = left_handle {
@@ -313,7 +313,7 @@ impl<'ctx> CodeGen<'ctx> {
                             arg.clone()
                         };
 
-                        if i < args.len() - 1 && final_arg.is_pure() && final_arg.complexity() > parallel_threshold {
+                        if self.parallel_depth.get() < self.max_parallel_depth && i < args.len() - 1 && final_arg.is_pure() && final_arg.complexity() > parallel_threshold {
                             handles.push((i, self.gen_parallel_expr(&final_arg, stack, expand_map)));
                             args_vals.push(self.context.i64_type().const_int(0, false).into());
                         } else {
