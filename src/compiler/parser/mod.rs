@@ -501,6 +501,12 @@ impl Parser {
                 let arg = self.parse_expr()?;
                 Expr::HttpServer(Box::new(op), Box::new(arg))
             }
+            Token::HttpHeader => {
+                self.consume()?;
+                let req = self.parse_expr()?;
+                let name = self.parse_expr()?;
+                Expr::HttpHeader(Box::new(req), Box::new(name))
+            }
             Token::Router => {
                 self.parse_router()?
             }

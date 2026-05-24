@@ -42,12 +42,19 @@ typedef struct {
 } HttpServer;
 
 typedef struct {
+    char* name;
+    char* value;
+} HttpHeader;
+
+typedef struct {
     int type; // 2 = HttpRequest
     int client_fd;
     char* method;
     char* path;
     char* body;
     void* tls_ctx;
+    HttpHeader* headers;
+    int header_count;
 } HttpRequest;
 
 void* llm_rt_alloc(size_t size, LlmRtType type);
@@ -62,6 +69,7 @@ __attribute__((weak)) long llm_http_server(long op, long arg);
 __attribute__((weak)) long llm_https_server(long port, long cert, long key, long legacy);
 __attribute__((weak)) long llm_http_server_accept(HttpServer* server);
 __attribute__((weak)) long llm_http_server_respond(HttpRequest* req, char* data_str);
+__attribute__((weak)) long llm_http_get_header(long req_ptr, long name_ptr);
 __attribute__((weak)) void llm_drop_json(long s);
 typedef struct {
     FILE* fp;

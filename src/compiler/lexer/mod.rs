@@ -52,6 +52,7 @@ pub enum Token {
     HttpServer, // srv
     FileOpen,   // fo
     Router,     // rt
+    HttpHeader, // hdr
     Identifier(String),
     Integer(i64),
     Float(f64),
@@ -177,6 +178,7 @@ impl Lexer {
             "http" => Token::HttpClient,
             "srv" => Token::HttpServer,
             "rt" => Token::Router,
+            "hdr" => Token::HttpHeader,
             "env" => Token::Env,
             "fo" => Token::FileOpen,
             "jp" => Token::Pack(1),

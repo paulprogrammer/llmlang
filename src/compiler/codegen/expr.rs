@@ -573,6 +573,20 @@ impl<'ctx> CodeGen<'ctx> {
                 self.maybe_drop_val(arg, arg_val, stack);
                 res
             }
+            Expr::HttpHeader(req, name) => {
+                let req_val = self.gen_expr(req, stack, expand_map);
+                let name_val = self.gen_expr(name, stack, expand_map);
+                let fn_type = self.context.i64_type().fn_type(&[
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(),
+                ], false);
+                let func = self.get_or_add_external_fn("llm_http_get_header", fn_type);
+                let call = self.builder.build_call(func, &[req_val.into(), name_val.into()], "http_get_header").unwrap();
+                let res = self.get_call_res(call);
+                self.maybe_drop_val(req, req_val, stack);
+                self.maybe_drop_val(name, name_val, stack);
+                res
+            }
             Expr::FileOpen(path, mode) => {
                 let path_val = self.gen_expr(path, stack, expand_map);
                 let mode_val = self.gen_expr(mode, stack, expand_map);

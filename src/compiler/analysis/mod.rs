@@ -13,6 +13,7 @@ impl Expr {
                 Expr::Integer(0) | Expr::Integer(1) | Expr::Integer(2) | Expr::Integer(3) => true,
                 _ => false,
             },
+            Expr::HttpHeader(_, _) => true,
             Expr::Let(_, val_expr, body_expr) => {
                 let val_ptr = val_expr.returns_ptr_with_stack(stack_ptrs, fn_returns_ptr);
                 let mut new_stack = stack_ptrs.to_vec();
@@ -76,7 +77,7 @@ impl Expr {
             Expr::Let(_, v, b) => v.is_pure() && b.is_pure(),
             Expr::New(_, c) => c.is_pure(),
             Expr::Get(i, _, idx) => i.is_pure() && idx.is_pure(),
-            Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) | Expr::TimeNow | Expr::TimeNano | Expr::Env(_) | Expr::Panic(_) | Expr::Trap(_, _) | Expr::HttpClient(_, _, _) | Expr::HttpServer(_, _) | Expr::FileOpen(_, _) => false,
+            Expr::Set(_, _, _, _) | Expr::Write(_, _) | Expr::Read(_) | Expr::TimeNow | Expr::TimeNano | Expr::Env(_) | Expr::Panic(_) | Expr::Trap(_, _) | Expr::HttpClient(_, _, _) | Expr::HttpServer(_, _) | Expr::HttpHeader(_, _) | Expr::FileOpen(_, _) => false,
             Expr::TimeGet(t, i) => t.is_pure() && i.is_pure(),
             Expr::TimeSet(y, m, d, h, mn, s) => y.is_pure() && m.is_pure() && d.is_pure() && h.is_pure() && mn.is_pure() && s.is_pure(),
             Expr::Pack(e) => e.is_pure(),
@@ -132,6 +133,7 @@ impl Expr {
             Expr::Trap(t, f) => 20 + t.complexity() + f.complexity(),
             Expr::HttpClient(method, url, body) => 10 + method.complexity() + url.complexity() + body.complexity(),
             Expr::HttpServer(op, arg) => 10 + op.complexity() + arg.complexity(),
+            Expr::HttpHeader(req, name) => 10 + req.complexity() + name.complexity(),
             Expr::FileOpen(path, mode) => 10 + path.complexity() + mode.complexity(),
             Expr::Import(..) | Expr::Shape(_, _, _) => 1,
         }
@@ -178,6 +180,7 @@ impl Expr {
             Expr::Sub(s, b, l) | Expr::Split(s, b, l) => { s.collect_calls(calls); b.collect_calls(calls); l.collect_calls(calls); }
             Expr::HttpClient(method, url, body) => { method.collect_calls(calls); url.collect_calls(calls); body.collect_calls(calls); }
             Expr::HttpServer(op, arg) => { op.collect_calls(calls); arg.collect_calls(calls); }
+            Expr::HttpHeader(req, name) => { req.collect_calls(calls); name.collect_calls(calls); }
             Expr::FileOpen(path, mode) => { path.collect_calls(calls); mode.collect_calls(calls); }
             Expr::BinaryOp(_, l, r) | Expr::Seq(l, r) | Expr::TimeOp(_, l, r) | Expr::Loc(l, r) | Expr::Reg(l, r) | Expr::Write(l, r) | Expr::MoneyOp(_, l, r) => {
                 l.collect_calls(calls); r.collect_calls(calls);
@@ -282,6 +285,11 @@ impl Expr {
                 s.push_str("srv");
                 op.collect_fingerprint(s);
                 arg.collect_fingerprint(s);
+            }
+            Expr::HttpHeader(req, name) => {
+                s.push_str("hdr");
+                req.collect_fingerprint(s);
+                name.collect_fingerprint(s);
             }
             _ => s.push_str("?"),
         }

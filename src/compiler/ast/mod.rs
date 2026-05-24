@@ -54,5 +54,6 @@ pub enum Expr {
     Trap(Box<Expr>, Box<Expr>),             // ^ try fallback
     HttpClient(Box<Expr>, Box<Expr>, Box<Expr>), // http method url body
     HttpServer(Box<Expr>, Box<Expr>),       // srv op_code arg
+    HttpHeader(Box<Expr>, Box<Expr>),       // hdr req header_name
     FileOpen(Box<Expr>, Box<Expr>),         // fo path mode
 }

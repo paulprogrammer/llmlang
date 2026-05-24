@@ -133,3 +133,17 @@ long http_decode(long s) {
     dest[j] = '\0';
     return (long)dest;
 }
+
+long llm_http_get_header(long req_ptr, long name_ptr) {
+    HttpRequest* req = (HttpRequest*)req_ptr;
+    char* name = (char*)name_ptr;
+    if (!req || req->type != 2 || !name) {
+        return (long)llm_rt_strdup("");
+    }
+    for (int i = 0; i < req->header_count; i++) {
+        if (strcasecmp(req->headers[i].name, name) == 0) {
+            return llm_dup((long)req->headers[i].value);
+        }
+    }
+    return (long)llm_rt_strdup("");
+}

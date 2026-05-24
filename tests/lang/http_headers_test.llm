@@ -1,0 +1,18 @@
+// HTTP Headers Integration Test
+
+: h_headers req
+    L auth hdr $ req "Authorization"
+    L key hdr $ req "x-custom-key"
+    L missing hdr $ req "X-Missing"
+    L part1 sc "Auth: " > auth
+    L part2 sc ", Key: " > key
+    L part3 sc ", Missing: " > missing
+    L body sc $ part1 sc $ part2 $ part3
+    ) > req $ body
+
+: h_fallback req
+    ) > req "404 Not Found"
+
+: main
+    rt "8084" 1 "GET" "/test-headers" h_headers h_fallback
+    0

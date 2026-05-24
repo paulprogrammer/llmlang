@@ -23,7 +23,7 @@ done
 if [ ${#TEST_FILES[@]} -eq 0 ]; then
     TEST_FILES=()
     for f in tests/lang/*.llm; do
-        if [[ "$(basename "$f")" != "http_server_test.llm" ]] && [[ "$(basename "$f")" != "https_test.llm" ]] && [[ "$(basename "$f")" != "http_router_test.llm" ]] && [[ "$(basename "$f")" != "http_dynamic_router_test.llm" ]]; then
+        if [[ "$(basename "$f")" != "http_server_test.llm" ]] && [[ "$(basename "$f")" != "https_test.llm" ]] && [[ "$(basename "$f")" != "http_router_test.llm" ]] && [[ "$(basename "$f")" != "http_dynamic_router_test.llm" ]] && [[ "$(basename "$f")" != "http_headers_test.llm" ]]; then
             TEST_FILES+=("$f")
         fi
     done

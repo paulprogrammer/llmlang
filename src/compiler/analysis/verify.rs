@@ -387,6 +387,10 @@ pub fn verify_expr(expr: &Expr, context: &mut VerificationContext) -> Result<(),
             verify_expr(op, context)?;
             verify_expr(arg, context)
         }
+        Expr::HttpHeader(req, name) => {
+            verify_expr(req, context)?;
+            verify_expr(name, context)
+        }
         Expr::FileOpen(path, mode) => {
             verify_expr(path, context)?;
             verify_expr(mode, context)

@@ -200,6 +200,8 @@ long llm_http_server_accept(HttpServer* server) {
     req->path = NULL;
     req->body = NULL;
     req->tls_ctx = NULL;
+    req->headers = NULL;
+    req->header_count = 0;
 
     if (server->tls_config) {
         req->tls_ctx = llm_tls_ctx_init(server->tls_config, &req->client_fd);
@@ -277,6 +279,16 @@ long llm_http_server_accept(HttpServer* server) {
                 body_str = dup_token("", 0);
             }
 
+            req->header_count = (int)num_headers;
+            if (num_headers > 0) {
+                req->headers = malloc(num_headers * sizeof(HttpHeader));
+                for (size_t i = 0; i < num_headers; i++) {
+                    req->headers[i].name = dup_token(headers[i].name, headers[i].name_len);
+                    req->headers[i].value = dup_token(headers[i].value, headers[i].value_len);
+                }
+            } else {
+                req->headers = NULL;
+            }
 
             req->method = method_str;
             req->path = path_str;
@@ -382,6 +394,19 @@ void llm_drop_socket(long s) {
             llm_drop((long)req->body);
             req->body = NULL;
         }
+        if (req->headers) {
+            for (int i = 0; i < req->header_count; i++) {
+                if (req->headers[i].name) {
+                    llm_drop((long)req->headers[i].name);
+                }
+                if (req->headers[i].value) {
+                    llm_drop((long)req->headers[i].value);
+                }
+            }
+            free(req->headers);
+            req->headers = NULL;
+        }
+        req->header_count = 0;
     }
 }
 
