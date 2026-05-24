@@ -11,7 +11,7 @@ pub struct FsSignatureResolver;
 impl SignatureResolver for FsSignatureResolver {
     fn resolve(&self, module: &str, import_paths: &[String], filename: &str) -> Result<String, String> {
         if module == "http" {
-            return Ok(": get 1\n: post 2\n: serve 1\n: https_serve 4\n: accept 1\n: respond 2\n".to_string());
+            return Ok(": get 1\n: post 2\n: serve 1\n: https_serve 4\n: accept 1\n: respond 2\n: decode 1\n".to_string());
         }
         if module == "json" {
             return Ok(": parse 1\n: stringify 1\n: get_int 2\n: get_float 2\n: get_str 2\n: get_obj 2\n: get_arr 2\n: arr_len 1\n: arr_get 2\n".to_string());
@@ -72,6 +72,7 @@ pub struct Parser {
     pub import_paths: Vec<String>,
     pub imported_shapes: Vec<(String, String)>,
     pub resolver: Box<dyn SignatureResolver>,
+    pub generated_funcs: Vec<Expr>,
 }
 
 impl Parser {
@@ -86,6 +87,7 @@ impl Parser {
             import_paths: Vec::new(),
             imported_shapes: Vec::new(),
             resolver: Box::new(FsSignatureResolver),
+            generated_funcs: Vec::new(),
         })
     }
 
@@ -499,6 +501,9 @@ impl Parser {
                 let arg = self.parse_expr()?;
                 Expr::HttpServer(Box::new(op), Box::new(arg))
             }
+            Token::Router => {
+                self.parse_router()?
+            }
             Token::Dot => {
                 self.consume()?;
                 let e1 = self.parse_expr()?;
@@ -518,10 +523,191 @@ impl Parser {
         Ok(res)
     }
 
+    fn parse_router(&mut self) -> Result<Expr, CompileError> {
+        self.consume()?; // consume Token::Router (rt)
+        
+        let port_expr = self.parse_expr()?;
+        
+        let num_routes = match self.consume()? {
+            Token::Integer(n) => n,
+            _ => return Err(self.error("E001")), // expected integer for route count
+        };
+        
+        let mut routes = Vec::new();
+        for _ in 0..num_routes {
+            let method = self.parse_expr()?;
+            let path = self.parse_expr()?;
+            let handler = self.parse_expr()?;
+            routes.push((method, path, handler));
+        }
+        
+        let fallback = self.parse_expr()?;
+        
+        // Generate a unique name for the routing loop
+        let loop_idx = self.generated_funcs.len() + 1;
+        let loop_name = format!("_rt_loop_{}", loop_idx);
+        
+        // Build the dispatch tree using nested conditions
+        let loop_identifier = Expr::Identifier(loop_name.clone());
+        let recurse_call = Expr::Apply(
+            Box::new(loop_identifier),
+            vec![Expr::Move(Box::new(Expr::DeBruijn(4)))]
+        );
+        
+        let mut dispatch_tree = Expr::Seq(
+            Box::new(Expr::Apply(Box::new(fallback), vec![Expr::Move(Box::new(Expr::DeBruijn(3)))])),
+            Box::new(recurse_call.clone())
+        );
+        
+        for (method_expr, path_expr, handler_expr) in routes.into_iter().rev() {
+            let method_pattern = match method_expr {
+                Expr::String(s) => format!("^{}$", s),
+                _ => return Err(self.error("E001")),
+            };
+            
+            // Analyze path template and extract dynamic parameter segment indices
+            let (path_pattern, param_segment_indices) = match path_expr {
+                Expr::String(s) => {
+                    let mut pattern_segments = Vec::new();
+                    let mut indices = Vec::new();
+                    let mut strtok_idx = 0;
+                    let segments: Vec<&str> = s.split('/').collect();
+                    for seg in segments {
+                        if seg.is_empty() {
+                            pattern_segments.push("".to_string());
+                        } else {
+                            if seg.starts_with(':') && seg.len() > 1 {
+                                pattern_segments.push("[^/]+".to_string());
+                                indices.push(strtok_idx);
+                            } else {
+                                pattern_segments.push(seg.to_string());
+                            }
+                            strtok_idx += 1;
+                        }
+                    }
+                    let pattern = format!("^{}$", pattern_segments.join("/"));
+                    (pattern, indices)
+                }
+                _ => return Err(self.error("E001")),
+            };
+            
+            let method_eq = Expr::Reg(
+                Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(0)))), // method is DeBruijn(0)
+                Box::new(Expr::String(method_pattern)),
+            );
+            let path_eq = Expr::Reg(
+                Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(1)))), // path is DeBruijn(1)
+                Box::new(Expr::String(path_pattern)),
+            );
+            let cond = Expr::BinaryOp(
+                Token::BitAnd,
+                Box::new(method_eq),
+                Box::new(path_eq),
+            );
+            
+            // Build arguments list for handler: [> req, sp $ path "/" idx1, ...]
+            let mut handler_args = vec![Expr::Move(Box::new(Expr::DeBruijn(3)))]; // req is DeBruijn(3)
+            for idx in param_segment_indices {
+                let extract_expr = Expr::Split(
+                    Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(1)))), // path is DeBruijn(1)
+                    Box::new(Expr::String("/".to_string())),
+                    Box::new(Expr::Integer(idx as i64)),
+                );
+                handler_args.push(extract_expr);
+            }
+            
+            let true_branch = Expr::Seq(
+                Box::new(Expr::Apply(Box::new(handler_expr), handler_args)),
+                Box::new(recurse_call.clone())
+            );
+            
+            dispatch_tree = Expr::If(
+                Box::new(cond),
+                Box::new(true_branch),
+                Box::new(dispatch_tree),
+            );
+        }
+        
+        let log_raw = Expr::Seq(
+            Box::new(Expr::Write(Box::new(Expr::Integer(1)), Box::new(Expr::Cat(Box::new(Expr::String("raw_path: ".to_string())), Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(2)))))))),
+            Box::new(Expr::Write(Box::new(Expr::Integer(1)), Box::new(Expr::String("\n".to_string()))))
+        );
+        let log_path = Expr::Seq(
+            Box::new(Expr::Write(Box::new(Expr::Integer(1)), Box::new(Expr::Cat(Box::new(Expr::String("path: ".to_string())), Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(1)))))))),
+            Box::new(Expr::Write(Box::new(Expr::Integer(1)), Box::new(Expr::String("\n".to_string()))))
+        );
+        let log_method = Expr::Seq(
+            Box::new(Expr::Write(Box::new(Expr::Integer(1)), Box::new(Expr::Cat(Box::new(Expr::String("method: ".to_string())), Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(0)))))))),
+            Box::new(Expr::Write(Box::new(Expr::Integer(1)), Box::new(Expr::String("\n".to_string()))))
+        );
+        let debug_prints = Expr::Seq(Box::new(log_raw), Box::new(Expr::Seq(Box::new(log_path), Box::new(log_method))));
+        
+        let dispatch_tree = Expr::Seq(Box::new(debug_prints), Box::new(dispatch_tree));
+
+        // Stack layout builders:
+        // L method srv 1 $ req (body has method at DeBruijn(0))
+        let method_val = Expr::HttpServer(
+            Box::new(Expr::Integer(1)),
+            Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(2)))), // req is DeBruijn(2) before method is bound
+        );
+        let method_let = Expr::Let("method".to_string(), Box::new(method_val), Box::new(dispatch_tree));
+        
+        // L path sp $ raw_path "?" 0 (body has path at DeBruijn(0))
+        let path_val = Expr::Split(
+            Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(0)))), // raw_path is DeBruijn(0) before path is bound
+            Box::new(Expr::String("?".to_string())),
+            Box::new(Expr::Integer(0)),
+        );
+        let path_let = Expr::Let("path".to_string(), Box::new(path_val), Box::new(method_let));
+        
+        // L raw_path srv 2 $ req (body has raw_path at DeBruijn(0))
+        let raw_path_val = Expr::HttpServer(
+            Box::new(Expr::Integer(2)),
+            Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(0)))), // req is DeBruijn(0) before raw_path is bound
+        );
+        let raw_path_let = Expr::Let("raw_path".to_string(), Box::new(raw_path_val), Box::new(path_let));
+        
+        // L req ( $ server (body has req at DeBruijn(0))
+        let req_val = Expr::Read(Box::new(Expr::Borrow(Box::new(Expr::DeBruijn(0))))); // server is DeBruijn(0) before req is bound
+        let req_let = Expr::Let("req".to_string(), Box::new(req_val), Box::new(raw_path_let));
+        
+        let loop_param = Param { name: "server".to_string(), expand: false };
+        let loop_def = Expr::Define(
+            loop_name.clone(),
+            vec![loop_param],
+            Box::new(req_let),
+            false
+        );
+        
+        self.generated_funcs.push(loop_def);
+        
+        let server_val = Expr::HttpServer(
+            Box::new(Expr::Integer(0)),
+            Box::new(port_expr)
+        );
+        
+        let start_app = Expr::Apply(
+            Box::new(Expr::Identifier(loop_name)),
+            vec![Expr::Move(Box::new(Expr::DeBruijn(0)))]
+        );
+        
+        let entry_expr = Expr::Let(
+            "s".to_string(),
+            Box::new(server_val),
+            Box::new(start_app)
+        );
+        
+        Ok(entry_expr)
+    }
+
     pub fn parse_module(&mut self) -> Result<Vec<Expr>, CompileError> {
         let mut expressions = Vec::new();
         while self.current_token != Token::EOF {
-            expressions.push(self.parse_expr()?);
+            let expr = self.parse_expr()?;
+            if !self.generated_funcs.is_empty() {
+                expressions.extend(self.generated_funcs.drain(..));
+            }
+            expressions.push(expr);
         }
         Ok(expressions)
     }

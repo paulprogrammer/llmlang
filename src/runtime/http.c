@@ -100,3 +100,36 @@ long http_post(long url_ptr, long body_ptr) {
     free(chunk.data);
     return managed_res;
 }
+
+static int hex_val(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return 10 + c - 'a';
+    if (c >= 'A' && c <= 'F') return 10 + c - 'A';
+    return -1;
+}
+
+long http_decode(long s) {
+    char* src = (char*)s;
+    if (!src) return (long)llm_rt_strdup("");
+    size_t len = strlen(src);
+    char* dest = llm_rt_alloc(len + 1, RT_TYPE_STRING);
+    size_t j = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (src[i] == '+') {
+            dest[j++] = ' ';
+        } else if (src[i] == '%' && i + 2 < len) {
+            int h1 = hex_val(src[i+1]);
+            int h2 = hex_val(src[i+2]);
+            if (h1 >= 0 && h2 >= 0) {
+                dest[j++] = (char)((h1 << 4) | h2);
+                i += 2;
+            } else {
+                dest[j++] = '%';
+            }
+        } else {
+            dest[j++] = src[i];
+        }
+    }
+    dest[j] = '\0';
+    return (long)dest;
+}

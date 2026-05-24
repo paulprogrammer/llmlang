@@ -52,10 +52,11 @@ long llm_pack(long* instance, const char* fields_csv) {
     char* fields = strdup(fields_csv);
     char* field_names[32];
     int field_count = 0;
-    char* token = strtok(fields, ",");
+    char* saveptr = NULL;
+    char* token = strtok_r(fields, ",", &saveptr);
     while (token && field_count < 32) {
         field_names[field_count++] = token;
-        token = strtok(NULL, ",");
+        token = strtok_r(NULL, ",", &saveptr);
     }
 
     cJSON* root = cJSON_CreateObject();
@@ -85,10 +86,11 @@ long llm_unpack(const char* json, const char* fields_csv) {
     char* fields = strdup(fields_csv);
     char* field_names[32];
     int field_count = 0;
-    char* token = strtok(fields, ",");
+    char* saveptr = NULL;
+    char* token = strtok_r(fields, ",", &saveptr);
     while (token && field_count < 32) {
         field_names[field_count++] = token;
-        token = strtok(NULL, ",");
+        token = strtok_r(NULL, ",", &saveptr);
     }
 
     long count = 0;

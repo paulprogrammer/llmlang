@@ -69,7 +69,8 @@ long llm_split(long s, long d, long index) {
     char* delim = (char*)d;
     if (!src || !delim) return (long)llm_rt_strdup("");
     char* copy = strdup(src);
-    char* token = strtok(copy, delim);
+    char* saveptr = NULL;
+    char* token = strtok_r(copy, delim, &saveptr);
     long current = 0;
     while (token != NULL) {
         if (current == index) {
@@ -77,7 +78,7 @@ long llm_split(long s, long d, long index) {
             free(copy);
             return (long)res;
         }
-        token = strtok(NULL, delim);
+        token = strtok_r(NULL, delim, &saveptr);
         current++;
     }
     free(copy);

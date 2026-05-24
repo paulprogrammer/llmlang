@@ -1,0 +1,17 @@
+// HTTP Native Router Test
+
+: h_first req
+    . ) 1 "Handler first called\n"
+    ) > req "Response from first handler"
+
+: h_second req
+    . ) 1 "Handler second called\n"
+    ) > req "{\"route\":\"second\"}"
+
+: h_fallback req
+    . ) 1 "Fallback handler called\n"
+    ) > req "404 Not Found"
+
+: main
+    rt "8082" 2 "GET" "/first" h_first "POST" "/second" h_second h_fallback
+    0

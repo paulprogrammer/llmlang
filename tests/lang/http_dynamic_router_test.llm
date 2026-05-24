@@ -1,0 +1,55 @@
+// HTTP Dynamic Router & Query Test
+
+I http decode 1
+
+: h_user req id
+    L body sc "User profile: " > id
+    ) > req $ body
+
+: h_comment req post_id comment_id
+    L part1 sc "Post: " > post_id
+    L part2 sc ", Comment: " > comment_id
+    L body sc $ part1 > part2
+    ) > req $ body
+
+: find_query_param query key index
+    L pair sp $ query "&" $ index
+    ? = sl $ pair 0
+        ""
+        ? sr ss $ pair 0 + sl $ key 1 sc "^" sc $ key "="
+            ss $ pair + sl $ key 1 - sl $ pair + sl $ key 1
+            @3 find_query_param $ query $ key + $ index 1
+
+// Helper function to extract query value from raw_path
+: get_query raw_path key
+    L q_idx sf $ raw_path "?"
+    ? = $ q_idx - 0 1
+        ""
+        L query ss $ raw_path + $ q_idx 1 - - sl $ raw_path $ q_idx 1
+        @3 find_query_param $ query $ key 0
+
+: h_search req
+    L raw_path srv 2 $ req
+    L q_val @2 get_query $ raw_path "q"
+    L decoded @1 decode > q_val
+    L body sc "Search results for: " > decoded
+    ) > req $ body
+
+: h_group req groupid
+    L raw_path srv 2 $ req
+    L search_val @2 get_query $ raw_path "search"
+    L decoded @1 decode > search_val
+    L part1 sc "Group: " > groupid
+    L part2 sc ", Search: " > decoded
+    L body sc $ part1 > part2
+    ) > req $ body
+
+: h_home req
+    ) > req "Home Page"
+
+: h_fallback req
+    ) > req "404 Not Found"
+
+: main
+    rt "8083" 5 "GET" "/user/:id" h_user "POST" "/posts/:id/comments/:comment_id" h_comment "GET" "/search" h_search "GET" "/groups/:groupid" h_group "GET" "/home" h_home h_fallback
+    0
