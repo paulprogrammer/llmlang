@@ -20,6 +20,7 @@ gcc -O3 01_memory_layout/soa_sum.c -o 01_memory_layout/soa_sum
 gcc -O3 02_vector_math/vector_add.c -o 02_vector_math/vector_add
 gcc -O3 03_recursion/fib.c -o 03_recursion/fib
 gcc -O3 04_string_split/split.c -o 04_string_split/split
+gcc -O3 05_gpu_hoisting/heavy_compute.c -o 05_gpu_hoisting/heavy_compute
 
 # Build llmlang implementations
 echo "Building llmlang implementations..."
@@ -27,6 +28,7 @@ echo "Building llmlang implementations..."
 ../llm-clang 02_vector_math/vector_add.llm -o 02_vector_math/vector_add_llm
 ../llm-clang 03_recursion/fib.llm -o 03_recursion/fib_llm
 ../llm-clang 04_string_split/split.llm -o 04_string_split/split_llm
+../llm-clang 05_gpu_hoisting/heavy_compute.llm -o 05_gpu_hoisting/heavy_compute_llm
 
 echo "Running benchmarks..."
 
@@ -43,6 +45,9 @@ FIB_L=$(./03_recursion/fib_llm | grep "Time" | awk '{print $3}')
 SPL_C=$(./04_string_split/split | grep "Time" | awk '{print $3}')
 SPL_L=$(./04_string_split/split_llm | grep "Time" | awk '{print $3}')
 
+GPU_C=$(./05_gpu_hoisting/heavy_compute | grep "Time" | awk '{print $3}')
+GPU_L=$(./05_gpu_hoisting/heavy_compute_llm | grep "Time" | awk '{print $3}')
+
 echo ""
 echo "| Benchmark Test                   | C (-O3) | llmlang |"
 echo "|----------------------------------|---------|---------|"
@@ -51,6 +56,7 @@ echo "| 01 Memory Layout (SoA) [2M]      | $SOA_C    | $SOA_L    |"
 echo "| 02 Vector Math [2M]              | $VEC_C    | $VEC_L    |"
 echo "| 03 Recursion (Fibonacci 40)      | $FIB_C    | $FIB_L    |"
 echo "| 04 String Parsing [2M]           | $SPL_C    | $SPL_L    |"
+echo "| 05 GPU Hoisting (OpenCL) [2M]    | $GPU_C    | $GPU_L    |"
 echo ""
 
 echo "================================================="

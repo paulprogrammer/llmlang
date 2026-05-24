@@ -9,5 +9,6 @@ benchmarks/**/*_llm
 benchmarks/**/vector_add
 benchmarks/**/fib
 benchmarks/**/split
+benchmarks/**/heavy_compute
 benchmarks/**/*.llmi
 *.so
