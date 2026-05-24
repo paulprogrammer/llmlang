@@ -40,7 +40,9 @@ impl Expr {
                         "json_get_str" | "get_str" |
                         "sign" | "encrypt" | "decrypt" | "unwrap" |
                         "serve" | "https_serve" | "accept" |
-                        "decode" | "encode_b64url" | "decode_b64url" | "greet" => true,
+                        "decode" | "encode_b64url" | "decode_b64url" | "greet" |
+                        "connect" | "connect_binding" | "query" | "error" |
+                        "db_connect" | "db_connect_binding" | "db_query" | "db_error" => true,
                         _ => name.ends_with("_get") || name.ends_with("_post") ||
                              name.ends_with("_parse") || name.ends_with("_stringify") ||
                              name.ends_with("_get_str") || name.ends_with("_sign") ||
@@ -48,7 +50,9 @@ impl Expr {
                              name.ends_with("_unwrap") || name.ends_with("_serve") ||
                              name.ends_with("_https_serve") || name.ends_with("_accept") ||
                              name.ends_with("_decode") || name.ends_with("_encode_b64url") ||
-                             name.ends_with("_decode_b64url") || name.ends_with("_greet")
+                             name.ends_with("_decode_b64url") || name.ends_with("_greet") ||
+                             name.ends_with("_connect") || name.ends_with("_connect_binding") ||
+                             name.ends_with("_query") || name.ends_with("_error")
                     };
                     if is_ptr_fn {
                         return true;

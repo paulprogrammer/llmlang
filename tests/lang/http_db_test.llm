@@ -1,0 +1,74 @@
+// HTTP Database Connectors Integration Test
+I db connect 2
+I db connect_binding 2
+I db query 4
+I db exec 3
+I db error 1
+
+X # User id name age
+X # QueryParams min_age
+X # DummyParams val
+
+X # RedisResult key value
+X # MongoResult id
+
+: h_db req
+    L conn @2 connect "sqlite" "sqlite://test.db"
+    
+    // Create Table
+    L dummy N DummyParams 1
+    . S $ dummy val 0 0
+    . @3 exec $ conn "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)" $ dummy
+    
+    // Clear Table
+    . @3 exec $ conn "DELETE FROM users" $ dummy
+    
+    // Insert Users
+    L ip1 N User 1
+    . S $ ip1 id 0 1
+    . S $ ip1 name 0 "Alice"
+    . S $ ip1 age 0 25
+    . @3 exec $ conn "INSERT INTO users (id, name, age) VALUES (?, ?, ?)" $ ip1
+    
+    L ip2 N User 1
+    . S $ ip2 id 0 2
+    . S $ ip2 name 0 "Bob"
+    . S $ ip2 age 0 35
+    . @3 exec $ conn "INSERT INTO users (id, name, age) VALUES (?, ?, ?)" $ ip2
+    
+    // Query users age > 30
+    L qp N QueryParams 1
+    . S $ qp min_age 0 30
+    L results @4 query $ conn "SELECT id, name, age FROM users WHERE age > ?" "User" $ qp
+    
+    L bob_name G $ results name 0
+    
+    // Verify Redis mock
+    L redis_conn @2 connect "redis" "redis://127.0.0.1:6379"
+    L redis_res @4 query $ redis_conn "GET foo" "RedisResult" $ dummy
+    L r_val G $ redis_res value 0
+    
+    // Verify MongoDB mock
+    L mongo_conn @2 connect "mongodb" "mongodb://127.0.0.1:27017"
+    L mongo_res @4 query $ mongo_conn "find users" "MongoResult" $ dummy
+    L m_id G $ mongo_res id 0
+    
+    // Verify K8s Service Binding
+    L k8s_conn @2 connect_binding "sqlite" "db-primary"
+    L k8s_res @4 query $ k8s_conn "SELECT id, name, age FROM users WHERE age > ?" "User" $ qp
+    L k_count sl $ k8s_res
+    
+    L part1 sc "SQLite Bob: " > bob_name
+    L part2 sc ", Redis: " > r_val
+    L part3 sc ", Mongo: " > m_id
+    L part4 ", K8s Count: "
+    L body sc $ part1 sc $ part2 sc $ part3 sc $ part4 str $ k_count
+    
+    ) > req $ body
+
+: h_fallback req
+    ) > req "404 Not Found"
+
+: main
+    rt "8085" 1 "GET" "/test-db" h_db h_fallback
+    0

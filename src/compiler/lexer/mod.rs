@@ -120,7 +120,7 @@ impl Lexer {
             '"' => self.lex_string(),
             '0'..='9' => self.lex_number(ch),
             'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier(ch),
-            _ => return Err(CompileError::new("E001", &self.filename, self.line)),
+            _ => return Err(CompileError::new(&format!("E001: Invalid char '{}' (0x{:x})", ch, ch as u32), &self.filename, self.line)),
         };
         Ok(tok)
     }

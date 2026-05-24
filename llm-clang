@@ -150,9 +150,9 @@ ar rcs "$RT_OBJ_DIR/libllm_rt.a" "$RT_OBJ_DIR"/*.o
 
 # Call clang to link the object files including the runtime static archive
 if [ "$(uname -s)" = "Darwin" ]; then
-    clang "${final_args[@]}" -L"$RT_OBJ_DIR" -lllm_rt -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto $EXTRA_LDFLAGS
+    clang "${final_args[@]}" -Wl,-force_load,"$RT_OBJ_DIR/libllm_rt.a" -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lsqlite3 $EXTRA_LDFLAGS
 else
-    clang "${final_args[@]}" -L"$RT_OBJ_DIR" -lllm_rt -Wl,--as-needed -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -Wl,--no-as-needed
+    clang "${final_args[@]}" -Wl,--whole-archive -L"$RT_OBJ_DIR" -lllm_rt -Wl,--no-whole-archive -Wl,--as-needed -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lsqlite3 -Wl,--no-as-needed
 fi
 LINK_RET=$?
 

@@ -68,7 +68,9 @@ impl<'ctx> CodeGen<'ctx> {
             "json_stringify", "stringify",
             "json_get_str", "get_str",
             "sign", "encrypt", "decrypt", "unwrap",
-            "serve", "https_serve", "accept"
+            "serve", "https_serve", "accept",
+            "connect", "connect_binding", "query", "error",
+            "db_connect", "db_connect_binding", "db_query", "db_error"
         ];
         for f in ffi_funcs {
             fn_returns_ptr.insert(f.to_string(), true);

@@ -69,6 +69,12 @@ void llm_drop(long s) {
                 }
                 break;
             }
+            case RT_TYPE_DB: {
+                if (llm_drop_db) {
+                    llm_drop_db(s);
+                }
+                break;
+            }
             case RT_TYPE_STRING:
             case RT_TYPE_RAW:
             default:

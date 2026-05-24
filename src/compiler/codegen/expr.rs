@@ -195,7 +195,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
 
-                if !found { panic!("E007"); }
+                if !found { panic!("E007: field '{}' not found in shape '{:?}'", field_name, inferred); }
                 let llvm_field_type = self.get_llvm_type(field_type_name);
                 let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
                 let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
@@ -294,11 +294,26 @@ impl<'ctx> CodeGen<'ctx> {
                     let mut handles = Vec::new();
                     let parallel_threshold = self.config.parallel_threshold;
                     for (i, arg) in args.iter().enumerate() {
-                        if i < args.len() - 1 && arg.is_pure() && arg.complexity() > parallel_threshold {
-                            handles.push((i, self.gen_parallel_expr(arg, stack, expand_map)));
+                        let is_db_query = name == "query" && self.imports.borrow().get(name).map(|m| m == "db").unwrap_or(false);
+                        let final_arg = if is_db_query && i == 2 {
+                            if let Expr::String(shape_name) = arg {
+                                if let Some(fields) = self.shapes.borrow().get(shape_name) {
+                                    Expr::String(fields.join(","))
+                                } else {
+                                    arg.clone()
+                                }
+                            } else {
+                                arg.clone()
+                            }
+                        } else {
+                            arg.clone()
+                        };
+
+                        if i < args.len() - 1 && final_arg.is_pure() && final_arg.complexity() > parallel_threshold {
+                            handles.push((i, self.gen_parallel_expr(&final_arg, stack, expand_map)));
                             args_vals.push(self.context.i64_type().const_int(0, false).into());
                         } else {
-                            args_vals.push(self.gen_expr(arg, stack, expand_map));
+                            args_vals.push(self.gen_expr(&final_arg, stack, expand_map));
                         }
                     }
                     if !handles.is_empty() {
@@ -335,7 +350,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let mut call_args = Vec::new();
                         
                         let is_ffi = if let Some(module) = self.imports.borrow().get(name) {
-                            module == "crypto" || module == "cms" || module == "file" || module == "http" || module == "json"
+                            module == "crypto" || module == "cms" || module == "file" || module == "http" || module == "json" || module == "db"
                         } else {
                             false
                         };

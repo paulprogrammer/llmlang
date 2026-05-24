@@ -82,6 +82,19 @@ __attribute__((weak)) void llm_drop_socket(long s);
 __attribute__((weak)) void llm_drop_tls_config(long s);
 __attribute__((weak)) void llm_drop_tls_ctx(long s);
 __attribute__((weak)) void llm_drop_crypto_key(long s);
+__attribute__((weak)) void llm_drop_db(long s);
+
+__attribute__((weak)) long db_connect(long driver_name_ptr, long conn_str_ptr);
+__attribute__((weak)) long db_connect_binding(long driver_name_ptr, long binding_name_ptr);
+__attribute__((weak)) long db_query(long conn_ptr, long sql_ptr, long fields_csv_ptr, long params_soa);
+__attribute__((weak)) long db_exec(long conn_ptr, long sql_ptr, long params_soa);
+__attribute__((weak)) long db_error(long conn_ptr);
+
+__attribute__((weak)) long llm_db_connect(long driver_name_ptr, long conn_str_ptr);
+__attribute__((weak)) long llm_db_connect_binding(long driver_name_ptr, long binding_name_ptr);
+__attribute__((weak)) long llm_db_query(long conn_ptr, long sql_ptr, long fields_csv_ptr, long params_soa);
+__attribute__((weak)) long llm_db_exec(long conn_ptr, long sql_ptr, long params_soa);
+__attribute__((weak)) long llm_db_error(long conn_ptr);
 
 __attribute__((weak)) long crypto_sign(long key_ptr, long data_ptr);
 __attribute__((weak)) long crypto_verify(long key_ptr, long sig_ptr, long data_ptr);
