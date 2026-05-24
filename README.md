@@ -96,7 +96,7 @@ Precision math types (`Money`) and automatic Struct-of-Arrays (SoA) layout mappi
 - **[License](./LICENSE):** GPLv3 with the `llmlang` Runtime Exception (Free to use, unrestricted output).
 
 ## Versioning
-`llmlang` uses SemVer. Current version: **v0.3.1**
+`llmlang` uses SemVer. Current version: **v0.4.0**
 
 ## Getting Started
 To compile and link a program in one command:
