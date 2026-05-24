@@ -51,6 +51,7 @@ pub fn verify_module(exprs: &[Expr], filename: &str) -> Result<(), CompileError>
         }
     }
 
+
     // Second pass: verify all function bodies
     for expr in exprs {
         if let Expr::Define(_name, params, body, _) = expr {

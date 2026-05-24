@@ -148,11 +148,19 @@ done
 # Package runtime objects into a static archive
 ar rcs "$RT_OBJ_DIR/libllm_rt.a" "$RT_OBJ_DIR"/*.o
 
+# Compile OpenCL dynamic library plugin if present
+if [ -f "$RT_DIR/driver_src/opencl_driver.c" ]; then
+    if [ "$RT_DIR/driver_src/opencl_driver.c" -nt "$RT_OBJ_DIR/libllm_opencl.so" ]; then
+        clang $debug_flags -fPIC -shared "$RT_DIR/driver_src/opencl_driver.c" -o "$RT_OBJ_DIR/libllm_opencl.so" -I"$RT_DIR" -ldl
+    fi
+    cp -f "$RT_OBJ_DIR/libllm_opencl.so" .
+fi
+
 # Call clang to link the object files including the runtime static archive
 if [ "$(uname -s)" = "Darwin" ]; then
     clang "${final_args[@]}" -Wl,-force_load,"$RT_OBJ_DIR/libllm_rt.a" -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lsqlite3 $EXTRA_LDFLAGS
 else
-    clang "${final_args[@]}" -Wl,--whole-archive -L"$RT_OBJ_DIR" -lllm_rt -Wl,--no-whole-archive -Wl,--as-needed -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lsqlite3 -Wl,--no-as-needed
+    clang "${final_args[@]}" -Wl,--whole-archive -L"$RT_OBJ_DIR" -lllm_rt -Wl,--no-whole-archive -Wl,--as-needed -lpthread -ldl -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lsqlite3 -Wl,--no-as-needed
 fi
 LINK_RET=$?
 

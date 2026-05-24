@@ -14,14 +14,22 @@ It compiles directly to highly-optimized LLVM IR via its native Rust backend, ac
 
 ## Key Features
 
-- **Memory Safety via Linear Typing:** Features a robust linear ownership system (move/consume mechanics) paired with an automated compile-time drop checker. Resources and memory lifetimes are strictly deterministic, eliminating use-after-free and double-free vulnerabilities without the overhead of a garbage collector.
-- **Automatic Parallelism Hoisting:** Through advanced dataflow analysis at the AST level, the compiler automatically extracts implicit parallelism. Independent execution branches and operations are hoisted into parallel threads via LLVM, dramatically boosting execution speeds without requiring developers to write explicit multi-threading code.
-- **Native Web and Networking Stack:** The standard library includes battle-tested, high-performance networking capabilities out of the box:
-  - **HTTP/HTTPS/TLS Support:** Fully functional server and client architectures powered natively by `mbedtls`, `curl`, and `picohttpparser`.
-  - **Native JWT Processing:** Built-in cryptographic signature verification and JWT claims parsing for modern stateless authentication.
-  - **Native JSON Serialization:** Effortless, type-safe marshalling between language primitives and JSON representations.
-- **Business-Ready Core:** Designed to run next-generation business applications with precision math (`Money` types), functional data pipelines (`Map`, `Filter`, `Fold`), and advanced SoA (Struct of Arrays) memory layouts for SIMD vectorization.
-- **Agentic Ecosystem:** Ships with its own MCP (Model Context Protocol) server for high-speed structural codebase traversal, allowing AI agents to navigate and refactor `llmlang` codebases with surgical precision.
+- **Memory Safety via Linear Typing:** Deterministic resource management using a linear ownership system (strict move/consume semantics) and compile-time drop checking. This guarantees zero use-after-free or double-free vulnerabilities with zero garbage collection overhead.
+- **Transparent SIMD Auto-vectorization & OpenCL JIT GPU Dispatch:** High-performance hardware acceleration without boilerplate:
+  - **Host-Target Optimization:** The compiler auto-detects host CPU architecture features (AVX/SSE/NEON) to generate highly optimized native vector operations.
+  - **64-Byte Memory Alignment:** Built-in memory allocators enforce 64-byte alignment, satisfying hardware register alignment constraints for crash-free vector loops.
+  - **Dynamic OpenCL JIT Compilation:** Functional `map` operations on Struct-of-Arrays (SoA) layouts are translated into OpenCL C kernels and JIT-compiled for GPU execution at runtime.
+  - **Graceful Fallbacks:** If OpenCL runtime environments are absent, execution falls back automatically to vectorized CPU loops without crashing.
+- **Pluggable Native Database Stack with Kubernetes Service Bindings:** Fully decoupled, self-registering driver architecture:
+  - **Decoupled Drivers:** Connectors for SQLite, Redis, and MongoDB are self-registering constructor plugins. Change database drivers seamlessly by linking at compile time.
+  - **Kubernetes Integration:** Out-of-the-box Kubernetes Service Bindings resolution. The runtime reads credentials automatically from projected binding directories (`SERVICE_BINDING_ROOT` or `/bindings/`), generating connection parameters transparently.
+  - **Resource Lifetime Tracking:** Database connections are tracked natively as linear types, guaranteeing that database handles are safely closed and resources are released upon scope termination.
+- **Implicit Parallelism Hoisting:** Statically analyzes the AST dataflow at compile time to automatically extract and hoist independent execution branches into parallel LLVM threads. This accelerates compute-intensive modules without manual multi-threading configurations.
+- **Native Web and Networking Stack:** High-efficiency HTTP client and server architectures built directly into the runtime:
+  - **Secure Communication:** Native HTTPS and TLS support powered by `mbedtls`, `curl`, and `picohttpparser`.
+  - **Authentication & Serialization:** Built-in cryptographic JWT validation and high-speed JSON marshalling for stateless microservice APIs.
+- **Business-First Primitives:** Primitives designed for high-density, production-grade applications, featuring precision `Money` math operations and functional data pipelines (`Map`, `Filter`, `Fold`).
+- **AI-Agentic Ecosystem:** Includes a native Model Context Protocol (MCP) server that empowers LLMs to structurally traverse, analyze, and safely refactor `llmlang` codebases at speed.
 
 ## Code Examples
 

@@ -20,7 +20,11 @@ char* llm_rt_strdup(const char* s) {
 }
 
 void* llm_alloc(long size) {
-    return malloc((size_t)size);
+    void* ptr = NULL;
+    if (posix_memalign(&ptr, 64, (size_t)size) != 0) {
+        return NULL;
+    }
+    return ptr;
 }
 
 void llm_drop(long s) {

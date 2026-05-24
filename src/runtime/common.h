@@ -113,4 +113,6 @@ int llm_tls_handshake(void* ctx);
 ssize_t llm_tls_read(void* ctx, unsigned char* buf, size_t len);
 ssize_t llm_tls_write(void* ctx, const unsigned char* buf, size_t len);
 
+__attribute__((weak)) long llm_opencl_map(long input_col_ptr, long output_col_ptr, long count, const char* kernel_src);
+
 #endif

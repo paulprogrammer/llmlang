@@ -1,0 +1,38 @@
+// SIMD & OpenCL SoA Map Integration Test
+
+X # Data val
+
+: add_one x
+    + x 1
+
+: main
+    // Create large dataset of 20,000 elements
+    L size 20000
+    L data N Data $ size
+    
+    // Populate column in-place
+    . @3 fill_impl $ data 0 $ size
+    
+    // Run map operation on data
+    L mapped_data map $ data "val" add_one
+    
+    // Verify first and last elements
+    L first G $ mapped_data val 0
+    L last G $ mapped_data val 19999
+    
+    L first_ok = $ first 1
+    L last_ok = $ last 20000
+    
+    L success & $ first_ok $ last_ok
+    
+    // Print verify statement
+    L out str $ success
+    . ) 1 $ out 0
+
+: fill_impl data idx count
+    L cond lt $ idx $ count
+    ? $ cond
+        . S $ data val $ idx $ idx
+        L next + $ idx 1
+        @3 fill_impl $ data $ next $ count
+        data

@@ -48,17 +48,17 @@ impl<'ctx> CodeGen<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         
-        // Emit runtime configuration as global constants with LinkOnceODR linkage
+        // Emit runtime configuration as global constants with WeakODR linkage
         let i64_type = context.i64_type();
         let threads_global = module.add_global(i64_type, None, "llm_max_threads");
         threads_global.set_initializer(&i64_type.const_int(config.max_threads as u64, false));
         threads_global.set_constant(true);
-        threads_global.set_linkage(inkwell::module::Linkage::LinkOnceODR);
+        threads_global.set_linkage(inkwell::module::Linkage::WeakODR);
 
         let queue_global = module.add_global(i64_type, None, "llm_queue_size");
         queue_global.set_initializer(&i64_type.const_int(config.queue_size as u64, false));
         queue_global.set_constant(true);
-        queue_global.set_linkage(inkwell::module::Linkage::LinkOnceODR);
+        queue_global.set_linkage(inkwell::module::Linkage::WeakODR);
 
         // Prepopulate with built-in/FFI functions that return pointers
         let mut fn_returns_ptr = HashMap::new();

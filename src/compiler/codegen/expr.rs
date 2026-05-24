@@ -1,7 +1,7 @@
 use crate::compiler::ast::Expr;
 use crate::compiler::lexer::Token;
 use crate::compiler::codegen::{CodeGen, StackItem, VariableState};
-use inkwell::values::BasicValueEnum;
+use inkwell::values::{BasicValueEnum, BasicValue};
 use std::collections::HashMap;
 
 impl<'ctx> CodeGen<'ctx> {
@@ -203,6 +203,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                 let ptr_to_element = unsafe { self.builder.build_gep(llvm_field_type, col_ptr, &[index], "gep").unwrap() };
                 let loaded = self.builder.build_load(llvm_field_type, ptr_to_element, "load").unwrap();
+                if let Some(inst) = loaded.as_instruction_value() {
+                    inst.set_alignment(8).unwrap();
+                }
                 self.maybe_drop_val(instance_expr, struct_ptr_val, stack);
                 loaded
             }
@@ -245,7 +248,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let col_ptr_int = self.as_int(col_ptr_int_val);
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                 let ptr_to_element = unsafe { self.builder.build_gep(llvm_field_type, col_ptr, &[index], "gep").unwrap() };
-                self.builder.build_store(ptr_to_element, value).unwrap();
+                let store_inst = self.builder.build_store(ptr_to_element, value).unwrap();
+                store_inst.set_alignment(8).unwrap();
                 self.maybe_drop_val(instance_expr, struct_ptr_val, stack);
                 value
             }
@@ -346,7 +350,22 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                         res
                     } else {
-                        let function = self.module.get_function(&final_func_name).expect("E010");
+                        let function = if let Some(f) = self.module.get_function(&final_func_name) {
+                            f
+                        } else {
+                            let fn_param_ptrs = self.fn_param_ptrs.borrow();
+                            let arity = fn_param_ptrs.get(name)
+                                .or_else(|| fn_param_ptrs.get(&final_func_name))
+                                .map(|ptrs| ptrs.len());
+                            if let Some(arg_count) = arity {
+                                let i64_type = self.context.i64_type();
+                                let args_types = vec![i64_type.into(); arg_count];
+                                let fn_type = i64_type.fn_type(&args_types, false);
+                                self.module.add_function(&final_func_name, fn_type, None)
+                            } else {
+                                panic!("E010: Function '{}' not found and cannot be declared", final_func_name);
+                            }
+                        };
                         let mut call_args = Vec::new();
                         
                         let is_ffi = if let Some(module) = self.imports.borrow().get(name) {
@@ -681,26 +700,78 @@ impl<'ctx> CodeGen<'ctx> {
                     let member_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(i as u64, false)], "member_ptr").unwrap() };
                     self.builder.build_store(member_ptr, val).unwrap();
                 }
-                let parent_func = self.builder.get_insert_block().unwrap().get_parent().unwrap();
-                let loop_bb = self.context.append_basic_block(parent_func, "map_loop");
-                let after_bb = self.context.append_basic_block(parent_func, "after_map");
-                let i_ptr = self.builder.build_alloca(self.context.i64_type(), "i").unwrap();
-                self.builder.build_store(i_ptr, self.context.i64_type().const_int(0, false)).unwrap();
-                self.builder.build_unconditional_branch(loop_bb).unwrap();
-                self.builder.position_at_end(loop_bb);
-                let i_val = self.builder.build_load(self.context.i64_type(), i_ptr, "i_val").unwrap();
-                let i = self.as_int(i_val);
-                let cond = self.builder.build_int_compare(inkwell::IntPredicate::SLT, i, count, "loopcond").unwrap();
-                let loop_body_bb = self.context.append_basic_block(parent_func, "map_body");
-                self.builder.build_conditional_branch(cond, loop_body_bb, after_bb).unwrap();
-                self.builder.position_at_end(loop_body_bb);
+
                 let mut field_idx = 0;
                 for (idx, f) in fields.iter().enumerate() { if f == field_name { field_idx = idx + 1; break; } }
                 let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
                 let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
                 let col_ptr_int = self.as_int(col_ptr_int_val);
                 let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
-                let old_val = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), col_ptr, &[i], "gep").unwrap() }, "old_val").unwrap();
+
+                let new_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(field_idx as u64, false)], "new_col_ptr_ptr").unwrap() };
+                let new_col_ptr_int_val = self.builder.build_load(self.context.i64_type(), new_col_ptr_ptr, "new_col_ptr_int").unwrap();
+                let new_col_ptr_int = self.as_int(new_col_ptr_int_val);
+                let new_col_ptr = self.builder.build_int_to_ptr(new_col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "new_col_ptr").unwrap();
+
+                // OpenCL Dynamic execution translation
+                let ocl_kernel_src = if let Expr::Identifier(ref name) = **func_expr {
+                    self.translate_to_opencl(name)
+                } else {
+                    None
+                };
+
+                let parent_func = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let cpu_map_bb = self.context.append_basic_block(parent_func, "cpu_map");
+                let after_map_bb = self.context.append_basic_block(parent_func, "after_map");
+
+                if let Some(kernel_src) = ocl_kernel_src {
+                    let ocl_fn_type = self.context.i64_type().fn_type(&[
+                        self.context.i64_type().into(),
+                        self.context.i64_type().into(),
+                        self.context.i64_type().into(),
+                        self.context.ptr_type(inkwell::AddressSpace::default()).into(),
+                    ], false);
+                    let ocl_func = self.get_or_add_external_fn("llm_opencl_map", ocl_fn_type);
+                    let kernel_src_val = self.gen_string_constant(&kernel_src);
+                    let call = self.builder.build_call(ocl_func, &[
+                        col_ptr_int.into(),
+                        new_col_ptr_int.into(),
+                        count.into(),
+                        kernel_src_val.into(),
+                    ], "ocl_res").unwrap();
+                    let ocl_res = self.get_call_res(call);
+                    let is_success = self.builder.build_int_compare(
+                        inkwell::IntPredicate::EQ,
+                        self.as_int(ocl_res),
+                        self.context.i64_type().const_int(1, false),
+                        "ocl_ok"
+                    ).unwrap();
+                    self.builder.build_conditional_branch(is_success, after_map_bb, cpu_map_bb).unwrap();
+                } else {
+                    self.builder.build_unconditional_branch(cpu_map_bb).unwrap();
+                }
+
+                // CPU Map block
+                self.builder.position_at_end(cpu_map_bb);
+                let loop_bb = self.context.append_basic_block(parent_func, "map_loop");
+                let loop_body_bb = self.context.append_basic_block(parent_func, "map_body");
+                let cpu_map_end_bb = self.context.append_basic_block(parent_func, "cpu_map_end");
+                let i_ptr = self.builder.build_alloca(self.context.i64_type(), "i").unwrap();
+                self.builder.build_store(i_ptr, self.context.i64_type().const_int(0, false)).unwrap();
+                self.builder.build_unconditional_branch(loop_bb).unwrap();
+
+                self.builder.position_at_end(loop_bb);
+                let i_val = self.builder.build_load(self.context.i64_type(), i_ptr, "i_val").unwrap();
+                let i = self.as_int(i_val);
+                let cond = self.builder.build_int_compare(inkwell::IntPredicate::SLT, i, count, "loopcond").unwrap();
+                self.builder.build_conditional_branch(cond, loop_body_bb, cpu_map_end_bb).unwrap();
+
+                self.builder.position_at_end(loop_body_bb);
+                let old_val_load = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), col_ptr, &[i], "gep").unwrap() }, "old_val").unwrap();
+                if let Some(inst) = old_val_load.as_instruction_value() {
+                    inst.set_alignment(8).unwrap();
+                }
+                let old_val = old_val_load;
                 let res_val = if let Expr::Identifier(ref name) = **func_expr {
                     let resolved = self.resolve_func_name(name);
                     let function = self.module.get_function(&resolved).expect("E010");
@@ -708,29 +779,57 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     old_val
                 };
-                let new_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(field_idx as u64, false)], "new_col_ptr_ptr").unwrap() };
-                let new_col_ptr_int_val = self.builder.build_load(self.context.i64_type(), new_col_ptr_ptr, "new_col_ptr_int").unwrap();
-                let new_col_ptr_int = self.as_int(new_col_ptr_int_val);
-                let new_col_ptr = self.builder.build_int_to_ptr(new_col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "new_col_ptr").unwrap();
-                self.builder.build_store(unsafe { self.builder.build_gep(self.context.i64_type(), new_col_ptr, &[i], "gep").unwrap() }, res_val).unwrap();
-                for (idx, _) in fields.iter().enumerate() {
-                    let current_idx = idx + 1;
-                    if current_idx != field_idx {
-                        let src_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int(current_idx as u64, false)], "src_col").unwrap() };
-                        let src_col_int_val = self.builder.build_load(self.context.i64_type(), src_col_ptr_ptr, "src_val").unwrap();
-                        let src_col_int = self.as_int(src_col_int_val);
-                        let src_col = self.builder.build_int_to_ptr(src_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "src_ptr").unwrap();
-                        let val = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), src_col, &[i], "gep").unwrap() }, "v").unwrap();
-                        let dst_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(current_idx as u64, false)], "dst_col").unwrap() };
-                        let dst_col_int_val = self.builder.build_load(self.context.i64_type(), dst_col_ptr_ptr, "dst_val").unwrap();
-                        let dst_col_int = self.as_int(dst_col_int_val);
-                        let dst_col = self.builder.build_int_to_ptr(dst_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "dst_ptr").unwrap();
-                        self.builder.build_store(unsafe { self.builder.build_gep(self.context.i64_type(), dst_col, &[i], "gep").unwrap() }, val).unwrap();
-                    }
-                }
+                let map_store = self.builder.build_store(unsafe { self.builder.build_gep(self.context.i64_type(), new_col_ptr, &[i], "gep").unwrap() }, res_val).unwrap();
+                map_store.set_alignment(8).unwrap();
                 self.builder.build_store(i_ptr, self.builder.build_int_add(i, self.context.i64_type().const_int(1, false), "next_i").unwrap()).unwrap();
                 self.builder.build_unconditional_branch(loop_bb).unwrap();
-                self.builder.position_at_end(after_bb);
+
+                self.builder.position_at_end(cpu_map_end_bb);
+                self.builder.build_unconditional_branch(after_map_bb).unwrap();
+
+                // After Map block (now execute the copy loop for other columns)
+                self.builder.position_at_end(after_map_bb);
+                if fields.len() > 1 {
+                    let copy_loop_bb = self.context.append_basic_block(parent_func, "copy_loop");
+                    let copy_body_bb = self.context.append_basic_block(parent_func, "copy_body");
+                    let copy_after_bb = self.context.append_basic_block(parent_func, "after_copy");
+                    let i_ptr_copy = self.builder.build_alloca(self.context.i64_type(), "i_copy").unwrap();
+                    self.builder.build_store(i_ptr_copy, self.context.i64_type().const_int(0, false)).unwrap();
+                    self.builder.build_unconditional_branch(copy_loop_bb).unwrap();
+
+                    self.builder.position_at_end(copy_loop_bb);
+                    let ic_val = self.builder.build_load(self.context.i64_type(), i_ptr_copy, "ic_val").unwrap();
+                    let ic = self.as_int(ic_val);
+                    let condc = self.builder.build_int_compare(inkwell::IntPredicate::SLT, ic, count, "loopcond_c").unwrap();
+                    self.builder.build_conditional_branch(condc, copy_body_bb, copy_after_bb).unwrap();
+
+                    self.builder.position_at_end(copy_body_bb);
+                    for (idx, _) in fields.iter().enumerate() {
+                        let current_idx = idx + 1;
+                        if current_idx != field_idx {
+                            let src_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int(current_idx as u64, false)], "src_col").unwrap() };
+                            let src_col_int_val = self.builder.build_load(self.context.i64_type(), src_col_ptr_ptr, "src_val").unwrap();
+                            let src_col_int = self.as_int(src_col_int_val);
+                            let src_col = self.builder.build_int_to_ptr(src_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "src_ptr").unwrap();
+                            let val_load = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), src_col, &[ic], "gep").unwrap() }, "v").unwrap();
+                            if let Some(inst) = val_load.as_instruction_value() {
+                                inst.set_alignment(8).unwrap();
+                            }
+                            let val = val_load;
+                            let dst_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(current_idx as u64, false)], "dst_col").unwrap() };
+                            let dst_col_int_val = self.builder.build_load(self.context.i64_type(), dst_col_ptr_ptr, "dst_val").unwrap();
+                            let dst_col_int = self.as_int(dst_col_int_val);
+                            let dst_col = self.builder.build_int_to_ptr(dst_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "dst_ptr").unwrap();
+                            let copy_store = self.builder.build_store(unsafe { self.builder.build_gep(self.context.i64_type(), dst_col, &[ic], "gep").unwrap() }, val).unwrap();
+                            copy_store.set_alignment(8).unwrap();
+                        }
+                    }
+                    self.builder.build_store(i_ptr_copy, self.builder.build_int_add(ic, self.context.i64_type().const_int(1, false), "next_ic").unwrap()).unwrap();
+                    self.builder.build_unconditional_branch(copy_loop_bb).unwrap();
+
+                    self.builder.position_at_end(copy_after_bb);
+                }
+
                 self.maybe_drop_val(inst_expr, inst_ptr_val, stack);
                 new_inst_ptr_int.into()
             }
@@ -765,7 +864,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let col_ptr_int = self.as_int(col_ptr_int_val);
                     let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                     let llvm_type = self.get_llvm_type(field_type_name);
-                    let val = self.builder.build_load(llvm_type, unsafe { self.builder.build_gep(llvm_type, col_ptr, &[i], "gep").unwrap() }, "v").unwrap();
+                    let val_load = self.builder.build_load(llvm_type, unsafe { self.builder.build_gep(llvm_type, col_ptr, &[i], "gep").unwrap() }, "v").unwrap();
+                    if let Some(inst) = val_load.as_instruction_value() {
+                        inst.set_alignment(8).unwrap();
+                    }
+                    let val = val_load;
                     row_vals.push(val);
                 }
                 let matched = if let Expr::Identifier(ref name) = **func_expr {
@@ -829,7 +932,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let col_ptr_int = self.as_int(col_ptr_int_val);
                     let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
                     let llvm_type = self.get_llvm_type(field_type_name);
-                    let val = self.builder.build_load(llvm_type, unsafe { self.builder.build_gep(llvm_type, col_ptr, &[i2], "gep").unwrap() }, "v").unwrap();
+                    let val_load = self.builder.build_load(llvm_type, unsafe { self.builder.build_gep(llvm_type, col_ptr, &[i2], "gep").unwrap() }, "v").unwrap();
+                    if let Some(inst) = val_load.as_instruction_value() {
+                        inst.set_alignment(8).unwrap();
+                    }
+                    let val = val_load;
                     row_vals2.push(val);
                 }
                 let matched2 = if let Expr::Identifier(ref name) = **func_expr {
@@ -855,7 +962,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let dst_col_int = self.as_int(dst_col_int_val);
                     let dst_col = self.builder.build_int_to_ptr(dst_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "dst_ptr").unwrap();
                     let llvm_type = self.get_llvm_type(&fields[idx]);
-                    self.builder.build_store(unsafe { self.builder.build_gep(llvm_type, dst_col, &[dst_idx], "gep").unwrap() }, row_vals2[idx]).unwrap();
+                    let filter_store = self.builder.build_store(unsafe { self.builder.build_gep(llvm_type, dst_col, &[dst_idx], "gep").unwrap() }, row_vals2[idx]).unwrap();
+                    filter_store.set_alignment(8).unwrap();
                 }
                 self.builder.build_store(next_dst_idx_ptr, self.builder.build_int_add(dst_idx, self.context.i64_type().const_int(1, false), "next_d").unwrap()).unwrap();
                 self.builder.build_unconditional_branch(end_copy_bb).unwrap();
@@ -974,6 +1082,75 @@ impl<'ctx> CodeGen<'ctx> {
             let shape = self.infer_shape(expr, stack);
             self.emit_auto_drop(val, shape.as_deref(), true);
         }
+    }
+
+    pub fn translate_to_opencl(&self, func_name: &str) -> Option<String> {
+        let templates = self.templates.borrow();
+        let (params, body) = templates.get(func_name)?;
+        
+        let mut stack_names = Vec::new();
+        for i in 0..params.len() {
+            stack_names.push(format!("param_{}", i));
+        }
+        
+        fn translate_expr(expr: &Expr, stack_names: &mut Vec<String>) -> Result<String, String> {
+            match expr {
+                Expr::Integer(i) => Ok(i.to_string()),
+                Expr::Float(f) => Ok(f.to_string()),
+                Expr::DeBruijn(idx) => {
+                    if *idx >= stack_names.len() {
+                        return Err("Invalid DeBruijn index".to_string());
+                    }
+                    let actual_idx = stack_names.len() - 1 - idx;
+                    Ok(stack_names[actual_idx].clone())
+                }
+                Expr::BinaryOp(op, left, right) => {
+                    let l = translate_expr(left, stack_names)?;
+                    let r = translate_expr(right, stack_names)?;
+                    let op_str = match op {
+                        Token::Add => "+",
+                        Token::Sub => "-",
+                        Token::Mul => "*",
+                        Token::Div => "/",
+                        Token::Eq => "==",
+                        Token::Lt => "<",
+                        Token::Gt => ">",
+                        _ => return Err(format!("Unsupported operator {:?}", op)),
+                    };
+                    Ok(format!("({} {} {})", l, op_str, r))
+                }
+                Expr::Let(name, val_expr, body_expr) => {
+                    let val = translate_expr(val_expr, stack_names)?;
+                    let local_name = format!("local_{}", name);
+                    stack_names.push(local_name.clone());
+                    let body_str = translate_expr(body_expr, stack_names)?;
+                    stack_names.pop();
+                    // Use GNU C statement expression
+                    Ok(format!("({{ long {} = {}; {}; }})", local_name, val, body_str))
+                }
+                Expr::If(cond, true_branch, false_branch) => {
+                    let c = translate_expr(cond, stack_names)?;
+                    let t = translate_expr(true_branch, stack_names)?;
+                    let f = translate_expr(false_branch, stack_names)?;
+                    Ok(format!("(({}) ? ({}) : ({}))", c, t, f))
+                }
+                _ => Err(format!("Unsupported expression in OpenCL translator: {:?}", expr)),
+            }
+        }
+        
+        let expr_str = translate_expr(body, &mut stack_names).ok()?;
+        
+        // Construct the full kernel source
+        let mut kernel = String::new();
+        kernel.push_str("__kernel void map_kernel(__global const long* input, __global long* output, const long count) {\n");
+        kernel.push_str("    int id = get_global_id(0);\n");
+        kernel.push_str("    if (id < count) {\n");
+        kernel.push_str("        long param_0 = input[id];\n");
+        kernel.push_str(&format!("        output[id] = {};\n", expr_str));
+        kernel.push_str("    }\n");
+        kernel.push_str("}\n");
+        
+        Some(kernel)
     }
 }
 

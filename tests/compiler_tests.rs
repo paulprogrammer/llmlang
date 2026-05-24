@@ -482,6 +482,26 @@ fn test_analysis_dfe() {
     assert!(!names.contains(&"unused".to_string()));
 }
 
+#[test]
+fn test_analysis_dfe_map_filter() {
+    let input = "X # Data val\n: add_one x + $ x 1\n: keep_even x gt $ x 2\n: main L data N Data 10 L mapped map $ data \"val\" add_one L filtered flt $ mapped keep_even 0";
+    let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
+    let mut exprs = parser.parse_module().unwrap();
+    
+    use llmlang::compiler::analysis::prune_dead_code;
+    exprs = prune_dead_code(exprs);
+    
+    let names: Vec<String> = exprs.iter().filter_map(|e| {
+        if let Expr::Define(n, _, _, _) = e { Some(n.clone()) } else { None }
+    }).collect();
+    
+    assert!(names.contains(&"add_one".to_string()), "add_one should be kept");
+    assert!(names.contains(&"keep_even".to_string()), "keep_even should be kept");
+    assert!(names.contains(&"main".to_string()));
+}
+
+
+
 
 #[test]
 fn test_integration_complex_fault_tolerance() {

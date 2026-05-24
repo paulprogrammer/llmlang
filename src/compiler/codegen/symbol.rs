@@ -7,6 +7,8 @@ use inkwell::OptimizationLevel;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
+use inkwell::passes::PassBuilderOptions;
+
 impl<'ctx> CodeGen<'ctx> {
     pub fn get_module_name(&self) -> String {
         use std::path::Path;
@@ -80,6 +82,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if self.module.get_function(&resolved).is_some() 
                     || self.templates.borrow().contains_key(&resolved) 
                     || self.module.get_function(&call_name).is_some() 
+                    || self.fn_param_ptrs.borrow().contains_key(&resolved)
+                    || self.fn_param_ptrs.borrow().contains_key(&call_name)
                 {
                     functions.insert(call_name, 0);
                 }
@@ -135,7 +139,11 @@ impl<'ctx> CodeGen<'ctx> {
         let i64_type = self.context.i64_type();
         let args_types = vec![i64_type.into(); arg_count];
         let fn_type = i64_type.fn_type(&args_types, false);
-        let function = self.module.add_function(&final_name, fn_type, None);
+        let function = if let Some(f) = self.module.get_function(&final_name) {
+            f
+        } else {
+            self.module.add_function(&final_name, fn_type, None)
+        };
         if !exported && name != "main" {
             function.set_linkage(inkwell::module::Linkage::Internal);
         }
@@ -167,16 +175,30 @@ impl<'ctx> CodeGen<'ctx> {
         Target::initialize_all(&InitializationConfig::default());
         let target_triple = TargetMachine::get_default_triple();
         let target = Target::from_triple(&target_triple).map_err(|e| e.to_string())?;
+        
+        let host_cpu = TargetMachine::get_host_cpu_name();
+        let host_features = TargetMachine::get_host_cpu_features();
+        let cpu_str = host_cpu.to_str().unwrap_or("generic");
+        let features_str = host_features.to_str().unwrap_or("");
+
         let target_machine = target
             .create_target_machine(
                 &target_triple,
-                "generic",
-                "",
-                OptimizationLevel::Default,
+                cpu_str,
+                features_str,
+                OptimizationLevel::Aggressive,
                 inkwell::targets::RelocMode::Default,
                 inkwell::targets::CodeModel::Default,
             )
             .ok_or_else(|| "Could not create target machine".to_string())?;
+
+        // Run LLVM vectorization passes via PassBuilderOptions
+        let options = PassBuilderOptions::create();
+        options.set_loop_vectorization(true);
+        options.set_loop_slp_vectorization(true);
+        self.module
+            .run_passes("default<O3>", &target_machine, options)
+            .map_err(|e| e.to_string())?;
 
         target_machine
             .write_to_file(&self.module, FileType::Object, path.as_ref())
