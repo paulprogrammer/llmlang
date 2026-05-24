@@ -70,7 +70,7 @@ jobs:
       if: matrix.os == 'alpine'
       run: |
         docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace alpine:edge sh -c "
-          apk add --no-cache rust cargo llvm22-dev clang-dev clang musl-dev curl-dev mbedtls-dev bash zstd-dev libffi-dev gcc g++ make git &&
+          apk add --no-cache rust cargo llvm22-dev clang-dev clang musl-dev curl-dev mbedtls2-dev sqlite-dev bash zstd-dev libffi-dev gcc g++ make git &&
           export PATH=\"/usr/lib/llvm22/bin:\$PATH\" &&
           export LLVM_SYS_221_PREFIX=\"/usr/lib/llvm22\" &&
           cargo build --release --verbose
@@ -88,7 +88,7 @@ jobs:
       if: matrix.os == 'alpine'
       run: |
         docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace alpine:edge sh -c "
-          apk add --no-cache rust cargo llvm22-dev clang-dev clang musl-dev curl-dev mbedtls-dev bash zstd-dev libffi-dev gcc g++ make git python3 &&
+          apk add --no-cache rust cargo llvm22-dev clang-dev clang musl-dev curl-dev mbedtls2-dev sqlite-dev bash zstd-dev libffi-dev gcc g++ make git python3 &&
           export PATH=\"/usr/lib/llvm22/bin:\$PATH\" &&
           export LLVM_SYS_221_PREFIX=\"/usr/lib/llvm22\" &&
           cargo test --release --verbose &&

@@ -21,6 +21,8 @@ RUN apk add --no-cache \
     clang \
     musl-dev \
     curl-dev \
+    mbedtls2-dev \
+    sqlite-dev \
     bash \
     zstd-dev \
     libffi-dev \
