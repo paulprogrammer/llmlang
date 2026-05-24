@@ -1,12 +1,13 @@
+pub mod display;
 use crate::compiler::lexer::Token;
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Param {
     pub name: String,
     pub expand: bool, // true if marked with !
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Expr {
     Integer(i64),
     Float(f64),

@@ -231,6 +231,18 @@ impl ServerHandler for LLMLangMCPHandler {
                             },
                             "required": ["function_name"]
                         }
+                    },
+                    {
+                        "name": "patch_symbol",
+                        "description": "Replaces a function's body AST and rewrites the source file",
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {
+                                "function_name": { "type": "string", "description": "The name of the function to patch" },
+                                "new_body_ast": { "type": "object", "description": "The new AST structure for the function body (JSON format matching Expr struct)" }
+                            },
+                            "required": ["function_name", "new_body_ast"]
+                        }
                     }
                 ]);
                 Ok(json!({ "tools": tools }))
@@ -334,6 +346,66 @@ impl ServerHandler for LLMLangMCPHandler {
                         let matches = index.fingerprints.get(&hash).cloned().unwrap_or_default();
                         Ok(json!({
                             "content": [MessageContent::Text { text: format!("Functions with same structure as {}: {:?}", function_name, matches) }]
+                        }))
+                    }
+                    "patch_symbol" => {
+                        let function_name = args.get("function_name").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing function_name"))?;
+                        let new_body_val = args.get("new_body_ast").ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing new_body_ast"))?;
+                        
+                        let new_body_ast: Expr = serde_json::from_value(new_body_val.clone())
+                            .map_err(|e| Error::protocol(ErrorCode::InvalidParams, format!("Invalid AST: {}", e)))?;
+
+                        // 1. Find file path
+                        let file_path = {
+                            let index = self.index.read().await;
+                            let meta = index.functions.get(function_name).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Function not found"))?;
+                            meta.path.clone()
+                        };
+
+                        // 2. Parse and replace inside a bounded scope so `Parser` drops before await
+                        let mut new_content = String::new();
+                        {
+                            let content = std::fs::read_to_string(&file_path).map_err(|e| Error::protocol(ErrorCode::InternalError, e.to_string()))?;
+                            let mut parser = Parser::new(Lexer::new(&content), file_path.clone())
+                                .map_err(|e| Error::protocol(ErrorCode::InternalError, format!("Parse init error: {}", e)))?;
+                            let mut exprs = parser.parse_module()
+                                .map_err(|e| Error::protocol(ErrorCode::InternalError, format!("Parse error: {}", e)))?;
+
+                            // 3. Find and replace
+                            let mut found = false;
+                            for expr in exprs.iter_mut() {
+                                if let Expr::Define(name, _params, body, _exported) = expr {
+                                    if name == function_name {
+                                        *body = Box::new(new_body_ast.clone());
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if !found {
+                                return Err(Error::protocol(ErrorCode::InternalError, "Function definition not found in parsed source file"));
+                            }
+
+                            // 4. Serialize back
+                            use llmlang::compiler::ast::display::PrettyExpr;
+                            for expr in exprs {
+                                new_content.push_str(&format!("{}\n\n", PrettyExpr::new(&expr, 0)));
+                            }
+                        }
+
+                        std::fs::write(&file_path, new_content.trim_end()).map_err(|e| Error::protocol(ErrorCode::InternalError, e.to_string()))?;
+                        
+                        // Ensure it has a trailing newline
+                        use std::io::Write;
+                        let mut file = std::fs::OpenOptions::new().append(true).open(&file_path).unwrap();
+                        writeln!(file).unwrap();
+
+                        // 5. Re-analyze to update index
+                        let _ = self.analyze_path(&file_path).await;
+
+                        Ok(json!({
+                            "content": [MessageContent::Text { text: format!("Successfully patched function: {}", function_name) }]
                         }))
                     }
                     _ => Err(Error::protocol(ErrorCode::MethodNotFound, format!("Tool {} not found", name))),

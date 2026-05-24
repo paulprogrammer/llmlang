@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Clone, serde::Serialize)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Token {
     Apply(usize), // @ or @2, @3...
     Add,       // +
