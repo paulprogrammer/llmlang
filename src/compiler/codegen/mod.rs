@@ -27,19 +27,29 @@ pub struct StackItem<'ctx> {
     pub is_ptr: bool,
 }
 
-fn get_stack_size() -> usize {
-    #[cfg(unix)]
+fn get_stack_info() -> (usize, usize) {
+    #[cfg(target_os = "macos")]
     unsafe {
-        let mut rlim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
-        if libc::getrlimit(libc::RLIMIT_STACK, &mut rlim) == 0 {
-            let limit = rlim.rlim_cur as usize;
-            if limit > 0 && limit != libc::RLIM_INFINITY as usize {
-                return limit;
+        let thread = libc::pthread_self();
+        let stackaddr = libc::pthread_get_stackaddr_np(thread) as usize;
+        let stacksize = libc::pthread_get_stacksize_np(thread);
+        let stack_bottom = stackaddr - stacksize;
+        return (stack_bottom, stacksize);
+    }
+    #[cfg(target_os = "linux")]
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        let mut stackaddr: *mut libc::c_void = std::ptr::null_mut();
+        let mut stacksize: libc::size_t = 0;
+        if libc::pthread_getattr_np(libc::pthread_self(), &mut attr) == 0 {
+            let res = libc::pthread_attr_getstack(&attr, &mut stackaddr, &mut stacksize);
+            libc::pthread_attr_destroy(&mut attr);
+            if res == 0 {
+                return (stackaddr as usize, stacksize);
             }
         }
     }
-    // Fallback: 8 MB
-    8 * 1024 * 1024
+    (0, 8 * 1024 * 1024)
 }
 
 pub struct CodeGen<'ctx> {
@@ -58,9 +68,22 @@ pub struct CodeGen<'ctx> {
     pub fn_param_ptrs: std::cell::RefCell<HashMap<String, Vec<bool>>>,
     pub parallel_depth: std::cell::Cell<usize>,
     pub max_parallel_depth: usize,
+    pub stack_bottom: usize,
+    pub stack_size: usize,
 }
 
 impl<'ctx> CodeGen<'ctx> {
+    pub fn has_sufficient_stack(&self) -> bool {
+        if self.stack_bottom == 0 {
+            return true;
+        }
+        let local_var = 0;
+        let current_sp = &local_var as *const _ as usize;
+        // Require at least 256 KB of remaining stack space to continue hoisting
+        let min_safe_remaining = 256 * 1024;
+        current_sp > self.stack_bottom + min_safe_remaining
+    }
+
     pub fn new(context: &'ctx Context, module_name: &str, config: Config) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
@@ -93,7 +116,8 @@ impl<'ctx> CodeGen<'ctx> {
             fn_returns_ptr.insert(f.to_string(), true);
         }
 
-        let max_parallel_depth = (get_stack_size() / 32768).max(1);
+        let (stack_bottom, stack_size) = get_stack_info();
+        let max_parallel_depth = (stack_size / 32768).max(1);
 
         Self { 
             context, 
@@ -111,6 +135,8 @@ impl<'ctx> CodeGen<'ctx> {
             fn_param_ptrs: std::cell::RefCell::new(HashMap::new()),
             parallel_depth: std::cell::Cell::new(0),
             max_parallel_depth,
+            stack_bottom,
+            stack_size,
         }
     }
 
