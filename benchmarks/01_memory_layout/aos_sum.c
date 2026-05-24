@@ -10,7 +10,7 @@ typedef struct {
 } Vector;
 
 int main() {
-    long count = 10000000;
+    long count = 2000000;
     Vector* v = malloc(count * sizeof(Vector));
 
     // 1. Initialize
@@ -22,7 +22,7 @@ int main() {
         v[i].z = 3;
     }
     clock_t end_init = clock();
-    printf("Init Time: %f s\n", (double)(end_init - start_init) / CLOCKS_PER_SEC);
+    printf("Init Time: %.0fms\n", (double)(end_init - start_init) / CLOCKS_PER_SEC * 1000.0);
 
     // 2. Sum Column X
     clock_t start_sum = clock();
@@ -32,7 +32,7 @@ int main() {
     }
     clock_t end_sum = clock();
     printf("Sum: %ld\n", total);
-    printf("Sum Time: %f s\n", (double)(end_sum - start_sum) / CLOCKS_PER_SEC);
+    printf("Sum Time: %.0fms\n", (double)(end_sum - start_sum) / CLOCKS_PER_SEC * 1000.0);
 
     free(v);
     return 0;

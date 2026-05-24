@@ -4,5 +4,10 @@
 *_bin
 out.llms
 /.gemini/
-benchmarks/*_sum
-benchmarks/*_llm
+benchmarks/**/*_sum
+benchmarks/**/*_llm
+benchmarks/**/vector_add
+benchmarks/**/fib
+benchmarks/**/split
+benchmarks/**/*.llmi
+*.so

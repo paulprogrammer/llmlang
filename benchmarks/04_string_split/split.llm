@@ -1,0 +1,17 @@
+// String Split Benchmark (llmlang)
+
+: split_loop i limit dummy
+    ? < $ i $ limit
+        L token sp "apple,banana,cherry,date,elderberry" "," 2
+        @3 split_loop + $ i 1 $ limit + $ dummy 1
+        $ dummy
+
+: main
+    L count 2000000
+    L start tns
+    L total @3 split_loop 0 $ count 0
+    L end tns
+
+    . ) 1 sc "Split loops: " sc str > count "\n"
+    . ) 1 sc "Split Time: " sc str / - $ end $ start 1000000 "ms\n"
+    0

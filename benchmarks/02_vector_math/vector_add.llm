@@ -1,0 +1,30 @@
+// Vector Add Benchmark (llmlang)
+# Vector val
+
+: init_loop i a b c
+    ? < $ i $ c
+        . S $ a val $ i $ i
+        . S $ b val $ i * $ i 2
+        @4 init_loop + $ i 1 $ a $ b $ c
+        0
+
+: add_loop i a b res c
+    ? < $ i $ c
+        . S $ res val $ i + G $ a val $ i G $ b val $ i
+        @5 add_loop + $ i 1 $ a $ b $ res $ c
+        0
+
+: main
+    L count 2000000
+    L a N Vector $ count
+    L b N Vector $ count
+    L res N Vector $ count
+
+    L dummy1 @4 init_loop 0 $ a $ b $ count
+
+    L start tns
+    L dummy2 @5 add_loop 0 $ a $ b $ res $ count
+    L end tns
+
+    . ) 1 sc "Vector Add Time: " sc str / - $ end $ start 1000000 "ms\n"
+    0

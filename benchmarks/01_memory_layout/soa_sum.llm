@@ -16,11 +16,11 @@
         $ acc
 
 : main
-    L count 10000000
+    L count 2000000
     L v N Vector $ count
     
     L start_init tns
-    . @3 init_loop 0 $ v $ count
+    L dummy1 @3 init_loop 0 $ v $ count
     L end_init tns
     . ) 1 sc "Init Time: " sc str / - $ end_init $ start_init 1000000 "ms\n"
 
