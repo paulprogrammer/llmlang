@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::compiler::ast::{Expr, Param};
+use crate::compiler::ast::Expr;
 use crate::compiler::lexer::Token;
 
 pub struct PrettyExpr<'a> {
