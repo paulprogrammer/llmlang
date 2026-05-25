@@ -11,15 +11,10 @@ Currently, code modifications require text-based diffs or regex-based replacemen
 **Proposed Solution:**
 Provide a native compiler API that allows the LLM to emit structural AST patches (e.g., `AST.insertNode(Parent, Child)`). This eliminates syntax errors during large refactoring and makes architectural pivots mathematically sound and highly predictable.
 
-## Design-by-Contract & Intent Verification
-LLM hallucinations can sometimes violate intended business rules if they stray from the Product Owner's constraints.
+## Intent & Contract Metadata Nodes
+Currently, comments are ignored by the compiler, leaving a disconnect between the PO's plain English requirements and the compiled binary. Furthermore, LLM hallucinations can sometimes violate intended business rules if they stray from these unenforced constraints.
 **Proposed Solution:**
-Introduce native pre- and post-condition contracts into the language syntax. The PO defines the invariant business logic, and the compiler statically or dynamically enforces these contracts. If an LLM generates non-compliant code, the build fails immediately, maintaining trust.
-
-## Natural Language Metadata Nodes
-Comments are currently ignored by the compiler, leaving a disconnect between the PO's plain English requirements and the compiled binary.
-**Proposed Solution:**
-Treat specific natural language directives as compiled metadata nodes (e.g., `NL "Calculate regional tax here"`). The compiler can extract these nodes to automatically generate living documentation, map them to executed code blocks, and track implementation progress.
+Introduce unified "Intent Nodes" into the AST that capture both the natural language objective and formal pre/post-condition contracts. These nodes are stripped during LLVM IR generation (costing zero runtime overhead) but serve as a living requirements document. The PO defines the intent and invariants, allowing an LLM to statically verify that its implementation matches both the human description and the mathematical contract. The compiler can extract these nodes to automatically generate living documentation and track implementation progress.
 
 ## Deterministic, Explicit State Management
 Hidden state mutations and race conditions are notoriously difficult for LLMs to debug, often leading to endless hallucination loops.
