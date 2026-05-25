@@ -64,6 +64,16 @@ void unregister_json_root(void* cell);
 void llm_drop(long s);
 long llm_dup(long s);
 
+extern __thread long current_trace_id;
+extern __thread long current_span_id;
+
+long llm_otel_enter_span();
+void llm_otel_exit_span();
+long llm_otel_get_context();
+
+long llm_emit_async(long type, long arg1, long arg2, long arg3);
+void llm_emit_wait_all();
+
 __attribute__((weak)) long llm_http_client(long method, long url, long body);
 __attribute__((weak)) long llm_http_server(long op, long arg);
 __attribute__((weak)) long llm_https_server(long port, long cert, long key, long legacy);

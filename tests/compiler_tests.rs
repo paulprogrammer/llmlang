@@ -25,7 +25,7 @@ fn test_positive_math() {
     let input = "+ 1 2";
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    codegen.gen_function("main", vec![], &ast, false).unwrap();
+    codegen.gen_function("main", vec![], &ast, false, None).unwrap();
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("add i64 1, 2") || ir.contains("ret i64 3"));
 }
@@ -36,7 +36,7 @@ fn test_positive_div() {
     let input = "/ 10 2";
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    codegen.gen_function("main", vec![], &ast, false).unwrap();
+    codegen.gen_function("main", vec![], &ast, false, None).unwrap();
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("sdiv i64 10, 2") || ir.contains("ret i64 5"));
 }
@@ -46,7 +46,7 @@ fn test_positive_comparisons() {
     let context = Context::create();
     let input = "X : main x y < $ ^1 $ ^0";
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parse_module(input)[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = parse_module(input)[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("icmp slt i64 %0, %1"));
     assert!(ir.contains("zext i1") || ir.contains("zext i1 %lt to i64"));
@@ -57,7 +57,7 @@ fn test_positive_bitwise() {
     let context = Context::create();
     let input = "X : main x y | & $ ^1 $ ^0 xor $ ^1 $ ^0";
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parse_module(input)[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = parse_module(input)[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("and i64 %0, %1"));
     assert!(ir.contains("xor i64 %0, %1"));
@@ -70,7 +70,7 @@ fn test_positive_debruijn() {
     let input = "X : add_one x + ^0 1";
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("define i64 @add_one(i64 %0)"));
 }
@@ -85,7 +85,7 @@ fn test_positive_soa_shape() {
         "x".to_string(),
         Box::new(Expr::Integer(0))
     );
-    codegen.gen_function("get_x", vec![], &body, false).unwrap();
+    codegen.gen_function("get_x", vec![], &body, false, None).unwrap();
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call ptr @llm_alloc"));
 }
@@ -96,7 +96,7 @@ fn test_positive_move_borrow() {
     let input = "X : test x + $ ^0 > ^0"; 
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     assert!(codegen.warnings.borrow().is_empty());
 }
 
@@ -108,7 +108,7 @@ fn test_negative_double_move() {
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, _) = ast {
         let result = catch_unwind(AssertUnwindSafe(|| {
-            codegen.gen_function(&name, params, &body, false).unwrap();
+            codegen.gen_function(&name, params, &body, false, None).unwrap();
         }));
         assert!(result.is_err());
     }
@@ -120,7 +120,7 @@ fn test_positive_let() {
     let input = "X : test x L y + ^0 1 > ^0"; 
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("add i64 %0, 1"));
 }
@@ -131,7 +131,7 @@ fn test_positive_recursion() {
     let input = "X : fact n ? ^0 * $ ^0 @ fact - > ^0 1 > ^0";
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @fact"));
 }
@@ -143,10 +143,10 @@ fn test_positive_expansion() {
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     codegen.gen_shape("Point", &["x".to_string()], false);
-    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let call_input = "@ poly N Point 1";
     let call_ast = parse_expr(call_input);
-    codegen.gen_function("wrapper", vec![], &call_ast, false).unwrap();
+    codegen.gen_function("wrapper", vec![], &call_ast, false, None).unwrap();
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call ptr @llm_alloc"));
 }
@@ -161,7 +161,7 @@ fn test_positive_export_sig() {
     for expr in exprs {
         match expr {
             Expr::Shape(n, f, exported) => codegen.gen_shape(&n, &f, exported),
-            Expr::Define(n, p, b, exported) => { codegen.gen_function(&n, p, &b, exported).unwrap(); },
+            Expr::Define(n, p, b, exported) => { codegen.gen_function(&n, p, &b, exported, None).unwrap(); },
             _ => {}
         }
     }
@@ -206,7 +206,7 @@ fn test_positive_import() {
     for expr in exprs {
         match expr {
             Expr::Import(m, s, a) => codegen.gen_import(&m, &s, a),
-            Expr::Define(n, p, b, exported) => { codegen.gen_function(&n, p, &b, exported).unwrap(); },
+            Expr::Define(n, p, b, exported) => { codegen.gen_function(&n, p, &b, exported, None).unwrap(); },
             _ => {}
         }
     }
@@ -246,7 +246,7 @@ fn test_positive_multi_arity_codegen() {
     let exprs = parser.parse_module().unwrap();
     for expr in exprs {
         match expr {
-            Expr::Define(name, params, body, exported) => { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+            Expr::Define(name, params, body, exported) => { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
             _ => {}
         }
     }
@@ -266,7 +266,7 @@ fn test_positive_nested_multi_arity() {
     let exprs = parser.parse_module().unwrap();
     for expr in exprs {
         match expr {
-            Expr::Define(name, params, body, exported) => { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+            Expr::Define(name, params, body, exported) => { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
             _ => {}
         }
     }
@@ -301,7 +301,7 @@ fn test_positive_string_literals() {
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let ast = parser.parse_expr().unwrap();
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    codegen.gen_function("main", vec![], &ast, false).unwrap();
+    codegen.gen_function("main", vec![], &ast, false, None).unwrap();
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("str_const"));
 }
@@ -312,7 +312,7 @@ fn test_positive_string_ops() {
     let input = "X : main sc \"a\" \"b\"";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_cat"));
 }
@@ -323,7 +323,7 @@ fn test_positive_regex() {
     let input = "X : main sr \"hello\" \"h.*o\"";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_reg"));
 }
@@ -334,7 +334,7 @@ fn test_positive_system_ops() {
     let input = "X : main L s ( 0 0";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_read"));
     assert!(ir.contains("call void @llm_drop"));
@@ -346,7 +346,7 @@ fn test_positive_split_op() {
     let input = "X : main sp \"a,b,c\" \",\" 1";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_split"));
 }
@@ -362,7 +362,7 @@ fn test_positive_auto_parallelism() {
         for _ in 0..30 { input.push_str("1 "); }
         let mut parser = new_parser(Lexer::new(&input), "test.llm".to_string());
         let codegen = CodeGen::new(&context, "test", llmlang::Config { parallel_threshold: 10, ..llmlang::Config::default() });
-        if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+        if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
         let ir = codegen.module.print_to_string().to_string();
         assert!(ir.contains("define i64 @parallel_task") || ir.contains("llm_fork"));
     }).unwrap().join().unwrap();
@@ -374,7 +374,7 @@ fn test_positive_temporal() {
     let input = "X : main L t tn L y tg $ ^0 0 ts > ^0 1 1 0 0 0";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_tai_now"));
     assert!(ir.contains("call i64 @llm_tai_get"));
@@ -387,7 +387,7 @@ fn test_positive_env() {
     let input = "X : main env \"HOME\"";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
-    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_getenv"));
 }
@@ -399,7 +399,7 @@ fn test_positive_json() {
     codegen.gen_shape("User", &["id".to_string(), "age".to_string()], false);
     let input = "X : main L u N User 1 . jp $ ^0 ju \"{}\" \"User\"";
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
-    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = parser.parse_module().unwrap()[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_pack"));
     assert!(ir.contains("call i64 @llm_unpack"));
@@ -412,7 +412,7 @@ fn test_positive_money() {
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
-    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_money_format"));
     assert!(ir.contains("add i64") || ir.contains("add i64 %0, %1"));
@@ -425,7 +425,7 @@ fn test_positive_trap() {
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
-    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_try"));
     assert!(ir.contains("define i64 @trap_try") || ir.contains("define i64 @trap_try_"));
@@ -439,7 +439,7 @@ fn test_integration_nested_traps() {
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     let exprs = parser.parse_module().unwrap();
-    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     // Should have multiple trap sub-functions
     assert!(ir.contains("trap_try_") && ir.contains("trap_fallback_"));
@@ -455,7 +455,7 @@ fn test_integration_json_filter() {
     let exprs = parser.parse_module().unwrap();
     for expr in exprs {
         match expr {
-            Expr::Define(n, p, b, exported) => { codegen.gen_function(&n, p, &b, exported).unwrap(); },
+            Expr::Define(n, p, b, exported) => { codegen.gen_function(&n, p, &b, exported, None).unwrap(); },
             _ => {}
         }
     }
@@ -515,7 +515,7 @@ fn test_integration_complex_fault_tolerance() {
     let exprs = parser.parse_module().unwrap();
     for expr in exprs {
         match expr {
-            Expr::Define(n, p, b, exported) => { codegen.gen_function(&n, p, &b, exported).unwrap(); },
+            Expr::Define(n, p, b, exported) => { codegen.gen_function(&n, p, &b, exported, None).unwrap(); },
             _ => {}
         }
     }
@@ -532,7 +532,7 @@ fn test_esoteric_parallel_recursion() {
     let mut parser = new_parser(Lexer::new(input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config { parallel_threshold: 1, ..llmlang::Config::default() });
     let exprs = parser.parse_module().unwrap();
-    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("call i64 @llm_fork"));
 }
@@ -550,7 +550,7 @@ fn test_esoteric_parallel_inside_trap() {
     let mut parser = new_parser(Lexer::new(&input), "test.llm".to_string());
     let codegen = CodeGen::new(&context, "test", llmlang::Config { parallel_threshold: 1, ..llmlang::Config::default() });
     let exprs = parser.parse_module().unwrap();
-    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported).unwrap(); }
+    if let Expr::Define(name, params, body, exported) = exprs[0].clone() { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
     let ir = codegen.module.print_to_string().to_string();
     assert!(ir.contains("define i64 @trap_try_"));
     assert!(ir.contains("define i64 @parallel_task_"));
@@ -567,7 +567,7 @@ fn test_esoteric_multi_move_error() {
     let exprs = parser.parse_module().unwrap();
     if let Expr::Define(name, params, body, _) = exprs[0].clone() {
         let result = catch_unwind(AssertUnwindSafe(|| {
-            codegen.gen_function(&name, params, &body, false).unwrap();
+            codegen.gen_function(&name, params, &body, false, None).unwrap();
         }));
         assert!(result.is_err());
         // Verify it was E016 if possible (catch_unwind doesn't give the panic message easily but we know it panics)
@@ -650,7 +650,7 @@ fn test_negative_shape_field_mismatch() {
             }
             Expr::Define(name, params, body, exported) => {
                 let result = catch_unwind(AssertUnwindSafe(|| {
-                    codegen.gen_function(&name, params, &body, exported).unwrap();
+                    codegen.gen_function(&name, params, &body, exported, None).unwrap();
                 }));
                 assert!(result.is_err());
             }
@@ -670,7 +670,7 @@ fn test_positive_namespaced_codegen() {
     for expr in exprs {
         match expr {
             Expr::Define(name, params, body, exported) => {
-                codegen.gen_function(&name, params, &body, exported).unwrap();
+                codegen.gen_function(&name, params, &body, exported, None).unwrap();
             }
             _ => {}
         }
@@ -778,7 +778,7 @@ fn test_negative_self_hosted() {
                                 codegen.gen_shape(&name, &fields, exported);
                             }
                             Expr::Define(name, params, body, exported) => {
-                                if codegen.gen_function(&name, params, &body, exported).is_err() {
+                                if codegen.gen_function(&name, params, &body, exported, None).is_err() {
                                     compiles = false;
                                     break;
                                 }

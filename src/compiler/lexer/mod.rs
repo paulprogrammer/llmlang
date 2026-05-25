@@ -30,6 +30,7 @@ pub enum Token {
     Len,       // sl
     Cat,       // sc
     StrSub,    // ss
+    OtelEmit(usize), // oe
     Loc,       // sf
     Reg,       // sr
     Read,      // (
@@ -47,6 +48,7 @@ pub enum Token {
     TimeZone,  // tz
     TimeGet,   // tg
     TimeSet,   // ts
+    Metadata,  // M
     Env,       // env
     HttpClient, // http
     HttpServer, // srv
@@ -113,6 +115,7 @@ impl Lexer {
             'N' => Token::New,
             'G' => Token::Get,
             'S' => Token::Set,
+            'M' => Token::Metadata,
             'X' => Token::Export,
             'L' => Token::Let,
             'I' => Token::Import,
@@ -183,6 +186,7 @@ impl Lexer {
             "fo" => Token::FileOpen,
             "jp" => Token::Pack(1),
             "ju" => Token::Pack(2),
+            "oe" => Token::OtelEmit(4),
             "sl" => Token::Len,
             "sc" => Token::Cat,
             "ss" => Token::StrSub,

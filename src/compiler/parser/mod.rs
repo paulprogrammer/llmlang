@@ -303,6 +303,13 @@ impl Parser {
                     return Err(self.error("E002"));
                 }
             }
+            Token::Metadata => {
+                self.consume()?;
+                let tag = self.parse_expr()?;
+                let val = self.parse_expr()?;
+                let target = self.parse_expr()?;
+                Expr::Metadata(Box::new(tag), Box::new(val), Box::new(target))
+            }
             Token::Export => {
                 self.consume()?;
                 let mut inner = self.parse_expr()?;
@@ -422,6 +429,14 @@ impl Parser {
                         return Err(self.error("E002"));
                     }
                 }
+            }
+            Token::OtelEmit(_) => {
+                self.consume()?;
+                let t = self.parse_expr()?;
+                let a1 = self.parse_expr()?;
+                let a2 = self.parse_expr()?;
+                let a3 = self.parse_expr()?;
+                Expr::OtelEmit(Box::new(t), Box::new(a1), Box::new(a2), Box::new(a3))
             }
             Token::Map => {
                 self.consume()?;

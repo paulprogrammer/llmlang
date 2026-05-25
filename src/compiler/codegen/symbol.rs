@@ -68,7 +68,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.module.add_function(&mangled_name, fn_type, None);
     }
 
-    pub fn gen_function(&self, name: &str, params: Vec<Param>, body: &Expr, exported: bool) -> Result<FunctionValue<'ctx>, CompileError> {
+    pub fn gen_function(&self, name: &str, params: Vec<Param>, body: &Expr, exported: bool, otel_span_name: Option<String>) -> Result<FunctionValue<'ctx>, CompileError> {
         // Run semantic verification
         {
             let mut shapes = HashMap::new();
@@ -161,12 +161,52 @@ impl<'ctx> CodeGen<'ctx> {
                 is_ptr, 
             });
         }
+        let mut start_time = None;
+        if otel_span_name.is_some() {
+            let get_time_fn = self.get_or_add_external_fn("llm_get_time_ns", self.context.i64_type().fn_type(&[], false));
+            start_time = Some(self.get_call_res(self.builder.build_call(get_time_fn, &[], "start_time").unwrap()));
+            
+            let enter_span_fn = self.get_or_add_external_fn("llm_otel_enter_span", self.context.void_type().fn_type(&[], false));
+            self.builder.build_call(enter_span_fn, &[], "enter_span").unwrap();
+        }
+        
         let ret_val = self.gen_expr(body, &mut stack, &HashMap::new());
+        
+        if let (Some(span_name), Some(start)) = (otel_span_name, start_time) {
+            let get_time_fn = self.get_or_add_external_fn("llm_get_time_ns", self.context.i64_type().fn_type(&[], false));
+            let end_time = self.get_call_res(self.builder.build_call(get_time_fn, &[], "end_time").unwrap());
+            
+            let emit_span_fn = self.get_or_add_external_fn("llm_otel_emit_span", self.context.void_type().fn_type(&[
+                self.context.i64_type().into(), // name (string ptr as i64)
+                self.context.i64_type().into(), // start
+                self.context.i64_type().into()  // end
+            ], false));
+            
+            let name_ptr = self.gen_string_constant(&span_name);
+            self.builder.build_call(emit_span_fn, &[
+                self.as_int(name_ptr).into(),
+                start.into(),
+                end_time.into()
+            ], "emit_span").unwrap();
+            
+            let exit_span_fn = self.get_or_add_external_fn("llm_otel_exit_span", self.context.void_type().fn_type(&[], false));
+            self.builder.build_call(exit_span_fn, &[], "exit_span").unwrap();
+        }
         for item in stack.iter() {
             if item.state == VariableState::Available {
                 self.emit_auto_drop(item.value, item.shape.as_deref(), item.is_ptr);
             }
         }
+        
+        if final_name == "main" {
+            let wait_all_fn = if let Some(f) = self.module.get_function("llm_emit_wait_all") {
+                f
+            } else {
+                self.module.add_function("llm_emit_wait_all", self.context.void_type().fn_type(&[], false), None)
+            };
+            self.builder.build_call(wait_all_fn, &[], "wait_all").unwrap();
+        }
+        
         self.builder.build_return(Some(&ret_val)).unwrap();
         Ok(function)
     }
@@ -261,7 +301,11 @@ impl<'ctx> CodeGen<'ctx> {
         
         // 1. Initialize user-defined functions
         for expr in exprs {
-            if let Expr::Define(name, params, _, _) = expr {
+            let actual_expr = match expr {
+                Expr::Metadata(_, _, t) => &**t,
+                _ => expr,
+            };
+            if let Expr::Define(name, params, _, _) = actual_expr {
                 fn_returns_ptr.insert(name.clone(), false);
                 let mangled = self.mangle_name(name);
                 let resolved = self.resolve_func_name(name);
@@ -282,7 +326,11 @@ impl<'ctx> CodeGen<'ctx> {
             iterations += 1;
             
             for expr in exprs {
-                if let Expr::Define(name, params, body, _) = expr {
+                let actual_expr = match expr {
+                    Expr::Metadata(_, _, t) => &**t,
+                    _ => expr,
+                };
+                if let Expr::Define(name, params, body, _) = actual_expr {
                     let mangled = self.mangle_name(name);
                     let resolved = self.resolve_func_name(name);
                     

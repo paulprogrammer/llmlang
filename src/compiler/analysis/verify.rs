@@ -37,7 +37,11 @@ pub fn verify_module(exprs: &[Expr], filename: &str) -> Result<(), CompileError>
 
     // First pass: register shapes, functions, and imports
     for expr in exprs {
-        match expr {
+        let actual = match expr {
+            Expr::Metadata(_, _, t) => &**t,
+            _ => expr,
+        };
+        match actual {
             Expr::Shape(name, fields, _) => {
                 shapes.insert(name.clone(), fields.clone());
             }
@@ -54,7 +58,11 @@ pub fn verify_module(exprs: &[Expr], filename: &str) -> Result<(), CompileError>
 
     // Second pass: verify all function bodies
     for expr in exprs {
-        if let Expr::Define(_name, params, body, _) = expr {
+        let actual = match expr {
+            Expr::Metadata(_, _, t) => &**t,
+            _ => expr,
+        };
+        if let Expr::Define(_name, params, body, _) = actual {
             let mut stack = Vec::new();
             let mut stack_shapes = Vec::new();
             let mut expand_map = HashMap::new();
@@ -400,5 +408,16 @@ pub fn verify_expr(expr: &Expr, context: &mut VerificationContext) -> Result<(),
         Expr::MoneyStr(e) | Expr::Panic(e) => verify_expr(e, context),
         Expr::Define(_, _, body, _) => verify_expr(body, context),
         Expr::Shape(_, _, _) | Expr::Import(..) => Ok(()),
+        Expr::Metadata(tag, val, t) => {
+            verify_expr(tag, context)?;
+            verify_expr(val, context)?;
+            verify_expr(t, context)
+        }
+        Expr::OtelEmit(t, a1, a2, a3) => {
+            verify_expr(t, context)?;
+            verify_expr(a1, context)?;
+            verify_expr(a2, context)?;
+            verify_expr(a3, context)
+        }
     }
 }

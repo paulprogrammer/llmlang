@@ -172,9 +172,23 @@ fn main() {
                 codegen.gen_shape(&name, &fields, exported);
             }
             Expr::Define(name, params, body, exported) => {
-                if let Err(err) = codegen.gen_function(&name, params, &body, exported) {
+                if let Err(err) = codegen.gen_function(&name, params, &body, exported, None) {
                     eprintln!("{}", err);
                     process::exit(1);
+                }
+            }
+            Expr::Metadata(tag, val, target) => {
+                if let Expr::String(tag_str) = &*tag {
+                    if tag_str == "otel" {
+                        if let Expr::String(span_name) = &*val {
+                            if let Expr::Define(name, params, body, exported) = &*target {
+                                if let Err(err) = codegen.gen_function(&name, params.clone(), &body, *exported, Some(span_name.clone())) {
+                                    eprintln!("{}", err);
+                                    process::exit(1);
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Expr::Import(module, symbol, arity) => {

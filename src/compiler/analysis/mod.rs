@@ -7,7 +7,8 @@ impl Expr {
     pub fn returns_ptr_with_stack(&self, stack_ptrs: &[bool], fn_returns_ptr: &HashMap<String, bool>) -> bool {
         match self {
             Expr::String(_) | Expr::New(_, _) | Expr::Unpack(_, _) | Expr::Map(_, _, _) | Expr::Filter(_, _) => true,
-            Expr::Cat(_, _) | Expr::Sub(_, _, _) | Expr::Read(_) | Expr::Str(_) | Expr::Split(_, _, _) | Expr::Pack(_) | Expr::Env(_) | Expr::MoneyStr(_) | Expr::TimeZone | Expr::FileOpen(_, _) => true,
+            Expr::Cat(_, _) | Expr::Sub(_, _, _) | Expr::Read(_) | Expr::Str(_) | Expr::Split(_, _, _) | Expr::Pack(_) | Expr::OtelEmit(_, _, _, _) | Expr::Env(_) | Expr::MoneyStr(_) | Expr::TimeZone | Expr::FileOpen(_, _) => true,
+            Expr::Metadata(_, _, t) => t.returns_ptr_with_stack(stack_ptrs, fn_returns_ptr),
             Expr::HttpClient(_, _, _) => true,
             Expr::HttpServer(op, _) => match &**op {
                 Expr::Integer(0) | Expr::Integer(1) | Expr::Integer(2) | Expr::Integer(3) => true,
@@ -85,6 +86,8 @@ impl Expr {
             Expr::TimeGet(t, i) => t.is_pure() && i.is_pure(),
             Expr::TimeSet(y, m, d, h, mn, s) => y.is_pure() && m.is_pure() && d.is_pure() && h.is_pure() && mn.is_pure() && s.is_pure(),
             Expr::Pack(e) => e.is_pure(),
+            Expr::Metadata(_, _, t) => t.is_pure(),
+            Expr::OtelEmit(_, _, _, _) => false,
             Expr::Unpack(e, _) => e.is_pure(),
             Expr::Map(e, _, f) => e.is_pure() && f.is_pure(),
             Expr::Filter(e, f) => e.is_pure() && f.is_pure(),
@@ -126,6 +129,8 @@ impl Expr {
             Expr::TimeGet(t, i) => 5 + t.complexity() + i.complexity(),
             Expr::TimeSet(y, m, d, h, mn, s) => 10 + y.complexity() + m.complexity() + d.complexity() + h.complexity() + mn.complexity() + s.complexity(),
             Expr::Pack(e) => 10 + e.complexity(),
+            Expr::Metadata(tag, val, t) => tag.complexity() + val.complexity() + t.complexity(),
+            Expr::OtelEmit(t, a1, a2, a3) => 10 + t.complexity() + a1.complexity() + a2.complexity() + a3.complexity(),
             Expr::Unpack(e, _) => 10 + e.complexity(),
             Expr::Map(e, _, f) => 20 + e.complexity() + f.complexity(),
             Expr::Filter(e, f) => 20 + e.complexity() + f.complexity(),
@@ -162,6 +167,17 @@ impl Expr {
             }
             Expr::Move(expr) | Expr::Borrow(expr) | Expr::MutBorrow(expr) | Expr::Len(expr) | Expr::Str(expr) | Expr::Read(expr) | Expr::Env(expr) | Expr::Pack(expr) | Expr::MoneyStr(expr) | Expr::Panic(expr) => {
                 expr.collect_calls(calls);
+            }
+            Expr::Metadata(tag, val, t) => {
+                tag.collect_calls(calls);
+                val.collect_calls(calls);
+                t.collect_calls(calls);
+            }
+            Expr::OtelEmit(t, a1, a2, a3) => {
+                t.collect_calls(calls);
+                a1.collect_calls(calls);
+                a2.collect_calls(calls);
+                a3.collect_calls(calls);
             }
             Expr::Unpack(expr, shape) => {
                 calls.push(shape.clone());
@@ -252,7 +268,8 @@ impl Expr {
             Expr::Import(..) => s.push_str("I"),
             Expr::Seq(e1, e2) => { s.push_str("."); e1.collect_fingerprint(s); e2.collect_fingerprint(s); }
             Expr::Pack(e) => { s.push_str("jp"); e.collect_fingerprint(s); }
-            Expr::Unpack(e, _) => { s.push_str("ju"); e.collect_fingerprint(s); }
+            Expr::OtelEmit(t, a1, a2, a3) => { s.push_str("oe"); t.collect_fingerprint(s); a1.collect_fingerprint(s); a2.collect_fingerprint(s); a3.collect_fingerprint(s); }
+            Expr::Unpack(e, shape) => { s.push_str("ju"); s.push_str(shape); e.collect_fingerprint(s); }
             Expr::Map(e, _, f) => { s.push_str("map"); e.collect_fingerprint(s); f.collect_fingerprint(s); }
             Expr::Filter(e, f) => { s.push_str("flt"); e.collect_fingerprint(s); f.collect_fingerprint(s); }
             Expr::Shape(_, fields, _) => {
@@ -306,9 +323,18 @@ pub fn prune_dead_code(expressions: Vec<Expr>) -> Vec<Expr> {
     let mut reachable = HashSet::new();
     let mut to_visit = Vec::new();
 
+    // Helper: unwrap Metadata to get inner expression
+    fn unwrap_metadata(expr: &Expr) -> &Expr {
+        match expr {
+            Expr::Metadata(_, _, t) => &**t,
+            _ => expr,
+        }
+    }
+
     // 1. Identify roots (main and exported symbols)
     for expr in &expressions {
-        match expr {
+        let actual = unwrap_metadata(expr);
+        match actual {
             Expr::Define(name, _, _, exported) => {
                 if name == "main" || *exported {
                     reachable.insert(name.clone());
@@ -335,13 +361,13 @@ pub fn prune_dead_code(expressions: Vec<Expr>) -> Vec<Expr> {
         }
         
         // Mark as visited so we don't process same definition twice
-        if let Expr::Define(name, _, _, _) = expr {
+        if let Expr::Define(name, _, _, _) = unwrap_metadata(expr) {
             visited.insert(name.clone());
         }
 
         // Find any newly reachable definitions to visit
         for def in &expressions {
-            if let Expr::Define(name, _, _, _) = def {
+            if let Expr::Define(name, _, _, _) = unwrap_metadata(def) {
                 if reachable.contains(name) && !visited.contains(name) {
                     to_visit.push(def);
                 }
@@ -351,7 +377,8 @@ pub fn prune_dead_code(expressions: Vec<Expr>) -> Vec<Expr> {
 
     // 3. Filter expressions
     expressions.into_iter().filter(|expr| {
-        match expr {
+        let actual = unwrap_metadata(expr);
+        match actual {
             Expr::Define(name, _, _, _) => reachable.contains(name),
             Expr::Import(_, symbol, _) => reachable.contains(symbol),
             Expr::Shape(name, _, exported) => reachable.contains(name) || *exported,

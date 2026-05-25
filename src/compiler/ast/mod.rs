@@ -45,6 +45,8 @@ pub enum Expr {
     Seq(Box<Expr>, Box<Expr>),              // . expr1 expr2
     Pack(Box<Expr>),                        // jp expr (Serialize / JSON pack)
     Unpack(Box<Expr>, String),              // ju expr "Shape" (Deserialize / JSON unpack)
+    Metadata(Box<Expr>, Box<Expr>, Box<Expr>), // M tag value target
+    OtelEmit(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>), // oe type arg1 arg2 arg3
     Map(Box<Expr>, String, Box<Expr>),      // map inst "field" func
     Filter(Box<Expr>, Box<Expr>),           // flt inst func
     MoneyOp(Token, Box<Expr>, Box<Expr>),   // % op a b

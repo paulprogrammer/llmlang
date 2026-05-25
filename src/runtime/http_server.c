@@ -426,3 +426,183 @@ long http_respond(long req_ptr, long data_ptr) {
     return llm_http_server_respond((HttpRequest*)req_ptr, (char*)data_ptr);
 }
 
+// --- OTEL Thread-Local Context ---
+__thread long current_trace_id = 0;
+__thread long current_span_id = 0;
+
+typedef struct {
+    long trace_id;
+    long span_id;
+} OtelContextState;
+
+__thread OtelContextState context_stack[256];
+__thread int context_stack_depth = 0;
+
+long llm_otel_enter_span() {
+    if (context_stack_depth < 256) {
+        context_stack[context_stack_depth].trace_id = current_trace_id;
+        context_stack[context_stack_depth].span_id = current_span_id;
+        context_stack_depth++;
+    }
+    
+    // Generate new trace ID if none exists (using clock nanoseconds for simple uniqueness)
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    long r = (long)ts.tv_sec * 1000000000LL + ts.tv_nsec; 
+    
+    if (current_trace_id == 0) {
+        current_trace_id = r;
+    }
+    
+    // Mix with thread id to ensure uniqueness for span
+    current_span_id = r ^ (long)pthread_self();
+    
+    return current_span_id;
+}
+
+void llm_otel_exit_span() {
+    if (context_stack_depth > 0) {
+        context_stack_depth--;
+        current_trace_id = context_stack[context_stack_depth].trace_id;
+        current_span_id = context_stack[context_stack_depth].span_id;
+    } else {
+        current_trace_id = 0;
+        current_span_id = 0;
+    }
+}
+
+long llm_otel_get_context() {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%ld:%ld", current_trace_id, current_span_id);
+    return (long)llm_rt_strdup(buf);
+}
+
+// --- Asynchronous Serialization MPSC Queue ---
+typedef struct EmissionTask {
+    long type; // 1 = DISCARDED_HTTP, 2 = OTEL_STDOUT, 3 = OTEL_HTTP, 4 = OTEL_FILE
+    long arg1;
+    long arg2;
+    long arg3;
+    struct EmissionTask* next;
+} EmissionTask;
+
+static pthread_mutex_t emission_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t emission_cond = PTHREAD_COND_INITIALIZER;
+static EmissionTask* emission_queue_head = NULL;
+static EmissionTask* emission_queue_tail = NULL;
+static int emission_shutdown = 0;
+static pthread_t emission_thread_id;
+static int emission_thread_started = 0;
+
+static void* emission_flusher_thread(void* arg) {
+    while (1) {
+        pthread_mutex_lock(&emission_mutex);
+        while (!emission_queue_head && !emission_shutdown) {
+            pthread_cond_wait(&emission_cond, &emission_mutex);
+        }
+        
+        EmissionTask* task = emission_queue_head;
+        if (task) {
+            emission_queue_head = task->next;
+            if (!emission_queue_head) emission_queue_tail = NULL;
+        }
+        pthread_mutex_unlock(&emission_mutex);
+        
+        if (!task && emission_shutdown) break;
+        
+        if (task) {
+            if (task->type == 1 || task->type == 3) {
+                // HTTP (Discarded or OTEL HTTP)
+                long res = llm_http_client(task->arg1, task->arg2, task->arg3);
+                llm_drop(res); 
+                
+                llm_drop(task->arg1);
+                llm_drop(task->arg2);
+                if (task->arg3) llm_drop(task->arg3);
+            } else if (task->type == 2) {
+                // OTEL STDOUT
+                char* msg = (char*)task->arg1;
+                if (msg) {
+                    fprintf(stdout, "%s\n", msg);
+                    fflush(stdout);
+                    llm_drop((long)msg);
+                }
+            } else if (task->type == 4) {
+                // OTEL FILE
+                char* path = (char*)task->arg1;
+                char* msg = (char*)task->arg2;
+                if (path && msg) {
+                    FILE* f = fopen(path, "a");
+                    if (f) {
+                        fprintf(f, "%s\n", msg);
+                        fclose(f);
+                    }
+                    llm_drop((long)path);
+                    llm_drop((long)msg);
+                }
+            }
+            free(task);
+        }
+    }
+    return NULL;
+}
+
+long llm_emit_async(long type, long arg1, long arg2, long arg3) {
+    EmissionTask* task = malloc(sizeof(EmissionTask));
+    task->type = type;
+    task->arg1 = arg1;
+    task->arg2 = arg2;
+    task->arg3 = arg3;
+    task->next = NULL;
+    
+    pthread_mutex_lock(&emission_mutex);
+    if (!emission_thread_started) {
+        pthread_create(&emission_thread_id, NULL, emission_flusher_thread, NULL);
+        emission_thread_started = 1;
+    }
+    if (emission_queue_tail) {
+        emission_queue_tail->next = task;
+        emission_queue_tail = task;
+    } else {
+        emission_queue_head = emission_queue_tail = task;
+    }
+    pthread_cond_signal(&emission_cond);
+    pthread_mutex_unlock(&emission_mutex);
+    return 0;
+}
+
+void llm_emit_wait_all() {
+    pthread_mutex_lock(&emission_mutex);
+    if (!emission_thread_started) {
+        pthread_mutex_unlock(&emission_mutex);
+        return;
+    }
+    emission_shutdown = 1;
+    pthread_cond_signal(&emission_cond);
+    pthread_mutex_unlock(&emission_mutex);
+    
+    pthread_join(emission_thread_id, NULL);
+}
+
+long llm_get_time_ns() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
+
+void llm_otel_emit_span(long name_ptr, long start, long end) {
+    char* name = (char*)name_ptr;
+    char buf[1024];
+    snprintf(buf, sizeof(buf), "{\"trace_id\":\"%ld\",\"span_id\":\"%ld\",\"name\":\"%s\",\"start_time\":%ld,\"end_time\":%ld}", 
+             current_trace_id, current_span_id, name ? name : "", start, end);
+             
+    char* payload = llm_rt_strdup(buf);
+    
+    char* endpoint = getenv("OTEL_EXPORTER_OTLP_ENDPOINT");
+    if (endpoint && strlen(endpoint) > 0) {
+        llm_emit_async(3, (long)llm_rt_strdup("POST"), (long)llm_rt_strdup(endpoint), (long)payload);
+    } else {
+        llm_emit_async(2, (long)payload, 0, 0);
+    }
+    llm_drop(name_ptr);
+}

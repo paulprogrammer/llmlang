@@ -636,9 +636,35 @@ impl<'ctx> CodeGen<'ctx> {
                 res
             }
             Expr::Seq(e1, e2) => {
-                let v1 = self.gen_expr(e1, stack, expand_map);
-                self.maybe_drop_val(e1, v1, stack);
-                self.gen_expr(e2, stack, expand_map)
+                if let Expr::HttpClient(method, url, body) = &**e1 {
+                    let method_val = self.gen_expr(method, stack, expand_map);
+                    let url_val = self.gen_expr(url, stack, expand_map);
+                    let body_val = self.gen_expr(body, stack, expand_map);
+                    
+                    let fn_type = self.context.i64_type().fn_type(&[
+                        self.context.i64_type().into(), 
+                        self.context.i64_type().into(),
+                        self.context.i64_type().into(),
+                        self.context.i64_type().into()
+                    ], false);
+                    let func = self.get_or_add_external_fn("llm_emit_async", fn_type);
+                    self.builder.build_call(func, &[
+                        self.context.i64_type().const_int(1, false).into(),
+                        self.as_int(method_val).into(),
+                        self.as_int(url_val).into(),
+                        self.as_int(body_val).into(),
+                    ], "async_http").unwrap();
+                    
+                    self.maybe_drop_val(method, method_val, stack);
+                    self.maybe_drop_val(url, url_val, stack);
+                    self.maybe_drop_val(body, body_val, stack);
+                    
+                    self.gen_expr(e2, stack, expand_map)
+                } else {
+                    let v1 = self.gen_expr(e1, stack, expand_map);
+                    self.maybe_drop_val(e1, v1, stack);
+                    self.gen_expr(e2, stack, expand_map)
+                }
             }
             Expr::Pack(e) => {
                 let val = self.gen_expr(e, stack, expand_map);
@@ -655,6 +681,33 @@ impl<'ctx> CodeGen<'ctx> {
                 let res = self.get_call_res(call);
                 self.maybe_drop_val(e, val, stack);
                 res
+            }
+            Expr::OtelEmit(t, a1, a2, a3) => {
+                let t_val = self.gen_expr(t, stack, expand_map);
+                let a1_val = self.gen_expr(a1, stack, expand_map);
+                let a2_val = self.gen_expr(a2, stack, expand_map);
+                let a3_val = self.gen_expr(a3, stack, expand_map);
+                
+                let fn_type = self.context.i64_type().fn_type(&[
+                    self.context.i64_type().into(), 
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into()
+                ], false);
+                let func = self.get_or_add_external_fn("llm_emit_async", fn_type);
+                self.builder.build_call(func, &[
+                    self.as_int(t_val).into(),
+                    self.as_int(a1_val).into(),
+                    self.as_int(a2_val).into(),
+                    self.as_int(a3_val).into(),
+                ], "otel_emit").unwrap();
+                
+                self.maybe_drop_val(t, t_val, stack);
+                self.maybe_drop_val(a1, a1_val, stack);
+                self.maybe_drop_val(a2, a2_val, stack);
+                self.maybe_drop_val(a3, a3_val, stack);
+                
+                self.context.i64_type().const_zero().into()
             }
             Expr::Unpack(e, shape_name) => {
                 let json_val = self.gen_expr(e, stack, expand_map);
@@ -1059,6 +1112,9 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Expr::Shape(_, _, _) | Expr::Import(..) | Expr::Define(_, _, _, _) => {
                 self.context.i64_type().const_int(0, false).into()
+            }
+            Expr::Metadata(_, _, t) => {
+                self.gen_expr(t, stack, expand_map)
             }
         }
     }
