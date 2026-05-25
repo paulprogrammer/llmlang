@@ -1,0 +1,19 @@
+// OTEL async telemetry test
+// Tests:
+//   1. The M (Metadata) marker triggers auto-span instrumentation
+//   2. The oe (otel_emit) operator pushes to the MPSC queue
+//   3. Nested spans propagate trace context
+
+// Auto-instrumented inner function
+M "otel" "inner_work" : inner x
+  + $ x 1
+
+// Auto-instrumented outer function that calls inner
+M "otel" "outer_work" : outer x
+  L result @ inner $ x
+  + > result 10
+
+: main
+  L val @ outer 5
+  . ) 1 sc str > val "\n"
+  0

@@ -1,0 +1,20 @@
+// OTEL standard library
+// Shapes and helpers for OpenTelemetry emission via MPSC queue
+
+X # OtelLog trace_id span_id parent_id name start_time end_time
+
+// emit_span: Serialize OtelLog shape and push to the async MPSC queue.
+// Output target is determined at runtime by OTEL_EXPORTER_OTLP_ENDPOINT env var:
+//   set   -> HTTP POST to endpoint
+//   unset -> stdout JSON line
+// Uses oe (otel_emit) type 2 (stdout) with the serialized JSON payload.
+X : emit_span trace_id span_id parent_id name start_time end_time
+  L log N OtelLog 1
+  . S $ log trace_id 0 > trace_id
+  . S $ log span_id 0 > span_id
+  . S $ log parent_id 0 > parent_id
+  . S $ log name 0 > name
+  . S $ log start_time 0 > start_time
+  . S $ log end_time 0 > end_time
+  L payload jp > log
+  oe 2 > payload 0 0
