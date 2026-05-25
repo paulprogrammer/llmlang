@@ -21,10 +21,10 @@ Hidden state mutations and race conditions are notoriously difficult for LLMs to
 **Proposed Solution:**
 Double down on linear typing (move/consume semantics) and strict immutability defaults. By forcing all state transitions to be explicit and deterministically verifiable, the LLM is guided into writing robust code that eliminates whole classes of "heisenbugs."
 
-## Native Test-Driven Scenarios (BDD/TDD)
-Writing ad-hoc test suites creates friction between the PO's scenario definitions and the LLM's implementation code.
+## Native Test-Driven Scenario Nodes (BDD/TDD)
+Writing ad-hoc test suites creates friction, as tests often rot or fall out of sync with the underlying codebase when stored in separate directories. 
 **Proposed Solution:**
-Bake behavior-driven scenario definitions directly into the standard library. The PO can define high-level scenarios ("Given X, When Y, Expect Z"), and the compiler treats them as failing constraints until the LLM satisfies them, creating a tight, verifiable feedback loop.
+Treat behavior-driven scenario definitions as a specialized type of metadata node attached directly to the function's AST. If "Intent Nodes" define internal constraints, "Scenario Nodes" define external invariants (Given X, Expect Y). By colocating the tests physically within the AST, the MCP Server can JIT-evaluate these scenarios to establish a verifiable, instant feedback loop for the LLM. Like all metadata nodes, these are completely stripped out during LLVM compilation, ensuring zero runtime overhead.
 
 ## Built-in Traceability & Telemetry
 When a system behaves unexpectedly in production, bridging the gap back to the LLM's original architectural choices is heavily manual.
