@@ -29,4 +29,4 @@ Treat behavior-driven scenario definitions as a specialized type of metadata nod
 ## Built-in Traceability & Telemetry
 When a system behaves unexpectedly in production, bridging the gap back to the LLM's original architectural choices is heavily manual.
 **Proposed Solution:**
-Auto-instrument generated code to include deterministic telemetry. Executed traces should map directly back to the specific AST nodes and LLM design decisions that authored them, allowing for instant, transparent debugging and high-fidelity context for the PO.
+Auto-instrument generated code natively using OpenTelemetry (OTEL) structured logs. Executed traces will be automatically formatted to industry-standard OTEL specifications and mapped directly back to the specific AST nodes and LLM design decisions that authored them. This provides zero-configuration, transparent observability for the PO, allowing production runtime issues to be instantly traced back to the exact generative code intent.
