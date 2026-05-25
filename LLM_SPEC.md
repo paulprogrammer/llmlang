@@ -47,6 +47,8 @@
   * `env` : Environment. `env key` (Returns string).
   * `http` : HTTP client. `http method url body` (Returns response payload).
   * `srv` : HTTP server. `srv op_code arg` (Manage HTTP socket connection).
+  * `M` : Metadata. `M tag value target` (Attaches key-value metadata to a definition).
+  * `oe` : OtelEmit. `oe type arg1 arg2 arg3` (Push telemetry payload to async MPSC queue).
   * `.` : Sequence. `. expr1 expr2` (Returns expr2).
   * `"` : String Literal. `"text"`
 
@@ -68,3 +70,43 @@
 - JSON Roundtrip: `: trip L u N User 1 . S $ u id 0 1 L j jp $ u ju > j "User"`
 - Env Access: `: config env "API_KEY"`
 - Sequence: `: seq . ) 1 "Part 1\n" ) 1 "Part 2\n"`
+
+## 5. Memory Safety (Affine Logic)
+1.  **Consume-Once:** A variable is either **Moved** (`>`) once or **Dropped** (Auto-Drop).
+2.  **Borrowing:** Use `$` for multiple reads.
+3.  **Invalid Access:** Accessing a moved variable triggers `E004/E005`.
+4.  **Capture Safety:** You cannot move (`>`) a variable inside a parallel task or trap (`^`) if it was captured from a parent scope (triggers `E016`).
+
+## 6. Performance Strategy (SoA)
+Always prefer columnar access. Instead of an array of objects, use a single instance of a large Shape:
+*   `# Point x y`
+*   `L p N Point 1000` -> Allocates 2 contiguous arrays of 1000 `i64`s.
+*   `map p "x" func` -> Maps `func` over all `x` values with cache-friendly stride.
+
+## 7. Error Handling
+*   **Fatal:** Use `! "msg"` for unrecoverable errors.
+*   **Recoverable:** Wrap risky code in trap (`^`).
+*   **Result Pattern:** Return `0` (null) for soft failures (common in `ju` JSON unpack).
+
+## 8. Canonical Patterns
+**Recursive Loop:**
+```llm
+: loop i count
+    ? < $ i $ count
+        . ... // Work
+          @2 loop + $ i 1 $ count
+        0
+```
+
+**Financial Calculation:**
+```llm
+: calc_interest bal rate
+    %* $ bal $ rate
+```
+
+**Auto-Instrumented Function:**
+```llm
+M "otel" "process_order" : process_order req
+    // Compiler auto-wraps with span entry/exit and timing
+    + $ req 1
+```

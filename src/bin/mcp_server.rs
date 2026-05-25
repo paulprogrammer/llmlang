@@ -17,8 +17,7 @@ use sha2::{Sha256, Digest};
 use tokio::io::{stdin, stdout, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 const LLM_SPEC: &str = include_str!("../../LLM_SPEC.md");
-const LANGUAGE_FUNDAMENTALS: &str = include_str!("../../LANGUAGE_FUNDAMENTALS.md");
-const AGENT_WORKFLOW: &str = include_str!("../../AGENT_WORKFLOW.md");
+const MCP_GUIDE: &str = include_str!("../../MCP_GUIDE.md");
 
 struct SymbolMetadata {
     expr: Expr,
@@ -134,19 +133,13 @@ impl ServerHandler for LLMLangMCPHandler {
                         "uri": "llm://spec",
                         "name": "llmlang Specification",
                         "mimeType": "text/markdown",
-                        "description": "The token-by-token grammar and operator specification"
-                    },
-                    {
-                        "uri": "llm://fundamentals",
-                        "name": "Language Fundamentals",
-                        "mimeType": "text/markdown",
-                        "description": "Dense concept mapping and UTF-8 cheat sheet for zero-shot learning"
+                        "description": "Token-by-token grammar, operator specification, memory safety rules, and canonical patterns"
                     },
                     {
                         "uri": "llm://agent-workflow",
                         "name": "MCP Agent Workflow Guide",
                         "mimeType": "text/markdown",
-                        "description": "Best practices and strategic workflows for using this MCP toolkit effectively"
+                        "description": "MCP server capabilities, tools, and strategic workflows for codebase analysis"
                     }
                 ]);
                 Ok(json!({ "resources": resources }))
@@ -157,8 +150,8 @@ impl ServerHandler for LLMLangMCPHandler {
                 
                 let content = match uri {
                     "llm://spec" => LLM_SPEC,
-                    "llm://fundamentals" => LANGUAGE_FUNDAMENTALS,
-                    "llm://agent-workflow" => AGENT_WORKFLOW,
+                    "llm://fundamentals" => LLM_SPEC,
+                    "llm://agent-workflow" => MCP_GUIDE,
                     _ => return Err(Error::protocol(ErrorCode::InvalidParams, format!("Unknown resource: {}", uri))),
                 };
 

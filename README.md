@@ -28,6 +28,11 @@ It compiles directly to highly-optimized LLVM IR via its native Rust backend, ac
 - **Native Web and Networking Stack:** High-efficiency HTTP client and server architectures built directly into the runtime:
   - **Secure Communication:** Native HTTPS and TLS support powered by `mbedtls`, `curl`, and `picohttpparser`.
   - **Authentication & Serialization:** Built-in cryptographic JWT validation and high-speed JSON marshalling for stateless microservice APIs.
+- **Native OpenTelemetry Auto-Instrumentation:** Zero-configuration observability built into the compiler and runtime:
+  - **Marker-Based Spans:** Tag any function with `M "otel" "span_name"` and the compiler auto-injects span entry/exit, timing, and trace context propagation.
+  - **Async MPSC Emission:** All telemetry payloads are serialized through a lock-free multi-producer queue, guaranteeing zero interleaving and non-blocking execution.
+  - **Runtime-Configurable Output:** Spans emit to stdout by default. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to route to an HTTP collector instead.
+  - **Standard Library:** `lib/otel.llm` provides the `OtelLog` shape and `emit_span` function for manual telemetry.
 - **Business-First Primitives:** Primitives designed for high-density, production-grade applications, featuring precision `Money` math operations and functional data pipelines (`Map`, `Filter`, `Fold`).
 - **AI-Agentic Ecosystem:** Includes a native Model Context Protocol (MCP) server that empowers LLMs to structurally traverse, analyze, and safely refactor `llmlang` codebases at speed.
 
@@ -60,6 +65,23 @@ Launch a fully functional web server natively in just a few tokens:
     0
 ```
 
+### Auto-Instrumented Telemetry
+Tag a function with `M` (Metadata) to get automatic OpenTelemetry spans with zero boilerplate:
+
+```llm
+// The compiler auto-wraps with span entry/exit and timing
+M "otel" "handle_request" : handle_request req
+    + $ req 1
+
+// Nested spans automatically propagate trace context
+M "otel" "process_order" : process_order x
+    L result @ handle_request $ x
+    + > result 10
+
+: main
+    @ process_order 5
+```
+
 ### Business Logic & Functional Pipelines
 Precision math types (`Money`) and automatic Struct-of-Arrays (SoA) layout mapping:
 
@@ -88,9 +110,9 @@ Precision math types (`Money`) and automatic Struct-of-Arrays (SoA) layout mappi
 - **[LLM Specification](./LLM_SPEC.md):** High-density language rules designed specifically for AI consumption.
 - **[Design Guide](./DESIGN.md):** Deep dive into the philosophy, memory layout (SoA), and linear ownership system.
 - **[User Guide](./USER_GUIDE.md):** End-to-end build-to-binary pipeline and syntax quick reference.
-- **[Build Guide](./BUILD_GUIDE.md):** Instructions for compiling the Rust toolchain and LLVM dependencies.
-- **[Installation Guide](./INSTALL_GUIDE.md):** Deployment options for system, user, or project-local availability.
-- **[MCP Server Guide](./MCP_GUIDE.md):** How to use the `llm-mcp` binary for structural codebase traversal.
+- **[Setup Guide](./SETUP.md):** Building from source, installation, and troubleshooting.
+- **[Database Connectors](./DB_CONNECTORS_GUIDE.md):** SQLite, Redis, MongoDB drivers with Kubernetes Service Bindings.
+- **[MCP Server Guide](./MCP_GUIDE.md):** How to use the `llm-mcp` binary for structural codebase traversal and agent workflows.
 - **[Diagnostics](./DIAGNOSTICS.md):** Mapping of token-efficient error and warning codes (`E00x`, `W00x`).
 - **[Release Guide](./RELEASE_GUIDE.md):** Versioning strategy and automated release process.
 - **[License](./LICENSE):** GPLv3 with the `llmlang` Runtime Exception (Free to use, unrestricted output).

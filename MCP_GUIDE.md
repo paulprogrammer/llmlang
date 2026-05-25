@@ -19,8 +19,9 @@ Instead of generic text embeddings, `llm-mcp` generates **Structural Fingerprint
 
 | URI | Description |
 | :--- | :--- |
-| `llm://spec` | The formal token-by-token grammar and operator specification. |
-| `llm://fundamentals` | Dense concept mapping and UTF-8 cheat sheet for zero-shot bootstrapping. |
+| `llm://spec` | Token-by-token grammar, operator specification, memory safety rules, and canonical patterns. |
+| `llm://fundamentals` | Alias for `llm://spec` (backward compatibility). |
+| `llm://agent-workflow` | MCP server capabilities, tools, and strategic workflows for codebase analysis. |
 
 ## Tools Provided
 
@@ -50,3 +51,59 @@ When an LLM uses this server, it can quickly orient itself in a large codebase b
 1.  Running `analyze_codebase` once.
 2.  Using `structural_search` to find patterns of SoA data access or recursive logic.
 3.  Mapping dependencies via `find_callers` without reading every source file.
+
+## Agent Workflow
+
+When using this MCP server, follow this workflow for maximum efficiency:
+
+### 1. Prime the Index
+Always begin by invoking `analyze_codebase`.
+```json
+{
+  "name": "analyze_codebase",
+  "arguments": { "path": "src" }
+}
+```
+This forces the server to parse all `.llm` files, generate AST representations, and build the structural fingerprints.
+
+### 2. Locate Your Target
+Use `search_symbols` to find the exact name of the function or shape you need to modify.
+```json
+{
+  "name": "search_symbols",
+  "arguments": { "query": "calculate_tax" }
+}
+```
+
+### 3. Extract the AST
+Once you have the exact symbol name, extract its current AST using `get_definition`.
+```json
+{
+  "name": "get_definition",
+  "arguments": { "name": "calculate_tax" }
+}
+```
+*Note: Do not try to read the file with standard text tools. The AST returned here is what you need to mutate.*
+
+### 4. Execute a Semantic Patch
+Build a new JSON representation of the AST body and pass it to `patch_symbol`.
+```json
+{
+  "name": "patch_symbol",
+  "arguments": {
+    "function_name": "calculate_tax",
+    "new_body_ast": {
+      "BinaryOp": [
+        "Mul",
+        { "Borrow": { "Identifier": "amount" } },
+        { "Float": 1.2 }
+      ]
+    }
+  }
+}
+```
+The server will automatically map the AST into valid `llmlang` prefix syntax and rewrite the target file deterministically.
+
+### Advanced Strategies
+- **Refactoring:** Use `find_callers` to locate all dependencies of a symbol before modifying its signature.
+- **Code Discovery:** Use `structural_search` to find similar functions based on their AST fingerprints, even if their names differ.

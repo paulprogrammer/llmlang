@@ -26,7 +26,7 @@ Writing ad-hoc test suites creates friction, as tests often rot or fall out of s
 **Proposed Solution:**
 Treat behavior-driven scenario definitions as a specialized type of metadata node attached directly to the function's AST. If "Intent Nodes" define internal constraints, "Scenario Nodes" define external invariants (Given X, Expect Y). By colocating the tests physically within the AST, the MCP Server can JIT-evaluate these scenarios to establish a verifiable, instant feedback loop for the LLM. Like all metadata nodes, these are completely stripped out during LLVM compilation, ensuring zero runtime overhead.
 
-## Built-in Traceability & Telemetry
-When a system behaves unexpectedly in production, bridging the gap back to the LLM's original architectural choices is heavily manual.
-**Proposed Solution:**
-Auto-instrument generated code natively using OpenTelemetry (OTEL) structured logs. Executed traces will be automatically formatted to industry-standard OTEL specifications and mapped directly back to the specific AST nodes and LLM design decisions that authored them. This provides zero-configuration, transparent observability for the PO, allowing production runtime issues to be instantly traced back to the exact generative code intent.
+## ~~Built-in Traceability & Telemetry~~ ✅ Implemented
+**Status:** Shipped. See [DESIGN.md §8](./DESIGN.md) and [USER_GUIDE.md §9](./USER_GUIDE.md).
+
+Auto-instrumentation via `M "otel" "span_name"` metadata marker. Compiler injects span entry/exit, timing, and trace context propagation. All telemetry serialized through an async MPSC queue. Runtime-configurable output (stdout or HTTP) via `OTEL_EXPORTER_OTLP_ENDPOINT`. Standard library `lib/otel.llm` provides `OtelLog` shape and `emit_span` for manual telemetry.

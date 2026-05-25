@@ -7,7 +7,7 @@
 - **MINOR** version for adding functionality in a backwards-compatible manner (e.g., new operators, new MCP tools).
 - **PATCH** version for backwards-compatible bug fixes.
 
-Current Version: **v0.1.1**
+Current Version: **v0.4.0**
 
 ## 2. Release Process
 

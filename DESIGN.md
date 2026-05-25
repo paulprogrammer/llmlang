@@ -48,4 +48,19 @@
   * Heap-allocated string and JSON operations.
   * POSIX regex support.
   * TAI64 temporal math and leap-second-agnostic calendar logic.
+  * **MPSC Emission Queue** for serialized async I/O (telemetry, fire-and-forget HTTP).
+  * **Thread-local trace context** for transparent OTEL span propagation.
 * **Computational Power:** Turing Complete.
+
+## 8. Observability & Telemetry
+* **Metadata Nodes (`M`):** The `M tag value target` syntax attaches key-value metadata to any expression. The compiler strips metadata during LLVM IR generation (zero runtime cost) unless the tag triggers a compiler pass (e.g., `M "otel" "span_name" : func`).
+* **Auto-Instrumentation:** When a function definition is tagged with `M "otel" "name"`, the compiler automatically wraps the body with:
+  1. `llm_otel_enter_span()` — pushes trace context onto a thread-local stack.
+  2. `llm_get_time_ns()` — records start/end timestamps.
+  3. `llm_otel_emit_span()` — serializes a JSON span and routes to the MPSC queue.
+  4. `llm_otel_exit_span()` — pops trace context.
+* **MPSC Queue (`oe` operator):** The `oe type arg1 arg2 arg3` operator pushes payloads to a persistent flusher thread. Task types: `1` = discarded HTTP, `2` = stdout, `3` = HTTP POST, `4` = file append. This guarantees zero interleaving across producers.
+* **Discarded Value Detection:** When the compiler detects that an `http` call's return value is discarded (e.g., left branch of a `.` sequence), it auto-reroutes the call to the MPSC queue as a fire-and-forget task.
+* **Runtime Configuration:** Set `OTEL_EXPORTER_OTLP_ENDPOINT` to route spans to an HTTP collector. Unset means stdout JSON lines.
+* **Standard Library:** `lib/otel.llm` exports `OtelLog` shape and `emit_span` function for manual telemetry emission.
+

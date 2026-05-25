@@ -143,6 +143,8 @@ For common math functions (sin, cos, abs, etc.), see the [llmlang-math](https://
 | **Env** | `env key` | Access system environment variables. |
 | **HTTP Client**| `http method url body` | Make an HTTP request. |
 | **HTTP Server**| `srv op arg` | HTTP server socket manager operations. |
+| **Metadata** | `M tag val target` | Attach key-value metadata to a definition. |
+| **OtelEmit** | `oe type a1 a2 a3` | Push telemetry payload to async MPSC queue. |
 | **Sequence** | `. e1 e2` | Evaluate e1 then e2, returning e2. |
 
 ## 6. Business Logic Example
@@ -184,3 +186,52 @@ The `./llm-test` script compiles and runs all test programs in `tests/lang/*.llm
 ## 8. Understanding Diagnostics
 
 If the compiler outputs a code like `E005` or `W001`, refer to [DIAGNOSTICS.md](./DIAGNOSTICS.md) for the human-readable mapping. These codes are optimized to save LLM tokens.
+
+## 9. OpenTelemetry Auto-Instrumentation
+
+`llmlang` provides native OTEL span instrumentation with zero boilerplate. Tag a function definition with `M "otel" "span_name"` and the compiler auto-wraps the body with span entry/exit, timing, and trace context propagation.
+
+### Auto-Instrumented Function
+
+```llm
+M "otel" "handle_request" : handle_request req
+    + $ req 1
+```
+
+The compiler generates equivalent logic to:
+1. Record start time (`llm_get_time_ns`)
+2. Enter span (`llm_otel_enter_span`)
+3. Execute function body
+4. Record end time, emit span JSON, exit span
+
+### Nested Spans
+
+Nested auto-instrumented functions automatically propagate trace context via thread-local storage:
+
+```llm
+M "otel" "inner" : inner x
+    + $ x 1
+
+M "otel" "outer" : outer x
+    L result @ inner $ x
+    + > result 10
+```
+
+### Output Configuration
+
+| Environment Variable | Behavior |
+| :--- | :--- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` (unset) | Spans written to stdout as JSON lines. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT=http://...` | Spans sent via HTTP POST to the endpoint. |
+
+### Manual Emission (`oe`)
+
+The `oe` operator pushes payloads directly to the async MPSC queue:
+
+```llm
+// oe type arg1 arg2 arg3
+// type 2 = stdout, type 3 = HTTP POST
+oe 2 > payload "" ""
+```
+
+The standard library `lib/otel.llm` provides the `OtelLog` shape and `emit_span` wrapper for structured manual telemetry.
