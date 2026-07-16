@@ -7,6 +7,8 @@ pub mod compiler {
     pub mod analysis;
 }
 
+pub mod testing;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

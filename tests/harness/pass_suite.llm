@@ -1,0 +1,26 @@
+// Collocated production code and harness tests: all tests here pass.
+// Run: llmlang test tests/harness/pass_suite.llm --test-data-dir tests/harness/data
+
+: add a b
+    + $ a $ b
+
+# Config value
+
+// Success path: valid arithmetic, no panics.
+M "test" "addition works" : test_add_ok
+    ? = @2 add 2 3 5
+        0
+        ! "math broken"
+
+// Data resolution path: reads external mock data via env "TEST_DATA_DIR",
+// unmarshals the JSON with ju, and asserts a value.
+M "test" "loads external mock data" : test_data_load
+    L path sc env "TEST_DATA_DIR" "/config.json"
+    L h fo $ path "r"
+    ? = $ h 0
+        ! "cannot open test data file"
+        L raw ( $ h
+        L c ju $ raw "Config"
+        ? = G $ c value 0 42
+            0
+            ! "unexpected config value"

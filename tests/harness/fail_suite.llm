@@ -1,0 +1,22 @@
+// Harness tests exercising failure recording and per-test isolation.
+// Expected: exit code 1, test_expected_failure recorded with its exact message.
+
+// Failure path: explicit panic with a known message.
+M "test" "explicit failure" : test_expected_failure
+    ! "Expected failure"
+
+// Missing data file: fo fails gracefully (returns 0) and the test panics,
+// which the runner records as a failure instead of crashing.
+M "test" "missing data file fails gracefully" : test_missing_data
+    L path sc env "TEST_DATA_DIR" "/does_not_exist.json"
+    L h fo $ path "r"
+    ? = $ h 0
+        ! "cannot open test data file"
+        0
+
+// State isolation: runs after the failing tests above, in a re-initialized
+// environment. If panic state leaked between test executions this would fail.
+M "test" "isolation: clean env after prior failure" : test_isolated_env
+    ? = sl env "LLM_PANIC_MSG" 0
+        0
+        ! "panic message leaked between tests"

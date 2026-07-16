@@ -183,6 +183,48 @@ The `./llm-test` script compiles and runs all test programs in `tests/lang/*.llm
 ./llm-test tests/lang/math.llm
 ```
 
+### Native Test Harness (`llmlang test`)
+
+Tests are written next to production code as functions tagged with the `M "test"`
+metadata operator — no new keywords. Tagged functions are isolated into a test
+execution tree and stripped from the production compilation target.
+
+```llm
+: add a b
+    + $ a $ b
+
+M "test" "addition works" : test_add_ok
+    ? = @2 add 2 3 5
+        0
+        ! "math broken"
+```
+
+A test **passes** if it runs to completion and **fails** if it panics (`!`); the
+runner wraps each execution in a trap (`^`) and records the panic message. Each
+test runs in a fresh process with a re-initialized environment, so no state
+leaks between tests. Inside a trap fallback, the last panic message is
+available via `env "LLM_PANIC_MSG"`.
+
+```bash
+# Run a file (or a directory, scanned recursively)
+llmlang test tests/harness/pass_suite.llm
+
+# External mock data: injected as TEST_DATA_DIR (default ./tests/data)
+llmlang test suite.llm --test-data-dir ./mocks
+
+# Machine-readable output
+llmlang test suite.llm --format=json
+```
+
+Test data is never inlined in the AST — tests load it at runtime with the
+existing `fo`/`(` (read) and `ju` (JSON unpack) operators from
+`env "TEST_DATA_DIR"`. Exit code is `0` on total success (including "0 tests
+found") and `1` on any failure. The same engine backs the `run_symbol_tests`
+MCP tool, which maps failures to AST fingerprints for diagnostic loops (see
+[MCP_GUIDE.md](./MCP_GUIDE.md)).
+
+The harness's own validation suite lives at `tests/harness/run_harness_tests.sh`.
+
 ## 8. Understanding Diagnostics
 
 If the compiler outputs a code like `E005` or `W001`, refer to [DIAGNOSTICS.md](./DIAGNOSTICS.md) for the human-readable mapping. These codes are optimized to save LLM tokens.

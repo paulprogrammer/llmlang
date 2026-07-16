@@ -1,0 +1,4 @@
+// Edge criteria: M "test" whose target is not a function definition (:) must
+// raise diagnostic E019 before any test executes.
+
+M "test" "bad target" 42

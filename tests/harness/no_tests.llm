@@ -1,0 +1,5 @@
+// Edge criteria: a module with no M "test" tags. The runner must exit 0 and
+// report "0 tests found".
+
+: add a b
+    + $ a $ b

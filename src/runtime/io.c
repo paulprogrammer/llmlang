@@ -67,10 +67,12 @@ long llm_getenv(long k) {
 __thread llm_trap_frame_t* llm_trap_stack = NULL;
 
 void llm_panic(long msg) {
+    char* s = (char*)msg;
+    // Record the message so trap fallbacks can recover it via `env "LLM_PANIC_MSG"`.
+    setenv("LLM_PANIC_MSG", s ? s : "Unknown error", 1);
     if (llm_trap_stack) {
         longjmp(llm_trap_stack->buf, 1);
     }
-    char* s = (char*)msg;
     fprintf(stderr, "🚨 PANIC: %s\n", s ? s : "Unknown error");
     exit(1);
 }

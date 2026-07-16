@@ -22,6 +22,7 @@ This document maps the token-efficient diagnostic codes emitted by the compiler 
 - **E016**: Cannot move a borrowed variable.
 - **E017**: Could not read or locate module signature.
 - **E018**: Imported symbol not found in module signature.
+- **E019**: `M "test"` metadata must target a function definition (`:`).
 
 ## Warnings (W)
 - **W001**: Variable leaked; defined but never consumed (linear typing violation).

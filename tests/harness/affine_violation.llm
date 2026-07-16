@@ -1,0 +1,7 @@
+// Edge criteria: the test sandbox must not bypass affine memory rules.
+// This test moves a binding twice; compilation must fail with E004/E005.
+
+M "test" "double move is rejected" : test_double_move
+    L x "hello"
+    . > x
+    sl > x

@@ -33,6 +33,7 @@ Instead of generic text embeddings, `llm-mcp` generates **Structural Fingerprint
 | `get_diagnostics` | Runs the compiler's frontend on a file and returns **E00x/W00x** diagnostic codes. |
 | `find_callers` | Returns a list of functions that call a specific symbol. |
 | `structural_search` | Finds all functions in the project that share the same AST structure as the target function. |
+| `run_symbol_tests` | Discovers `M "test"` functions in a `.llm` file, executes each in an isolated sandboxed process, and returns structured JSON mapping failures to the target symbol's **AST fingerprint**. Accepts an optional `test_data_dir` injected as `TEST_DATA_DIR` (default `./tests/data`). |
 
 ## Running the Server
 

@@ -12,3 +12,4 @@ benchmarks/**/split
 benchmarks/**/heavy_compute
 benchmarks/**/*.llmi
 *.so
+a.out

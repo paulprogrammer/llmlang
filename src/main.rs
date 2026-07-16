@@ -14,9 +14,16 @@ The Turing-complete, polymorphic language optimized for LLM token usage and exec
 
 USAGE:
     llmlang <INPUT> [OPTIONS]
+    llmlang test <PATH> [--test-data-dir <DIR>] [--format <text|json>] [-I <PATH>]
 
 ARGS:
     <INPUT>             Path to the .llm source file
+
+SUBCOMMANDS:
+    test                Discover and run functions tagged with M \"test\".
+                        <PATH> is a .llm file or a directory scanned recursively.
+                        --test-data-dir sets the sandbox TEST_DATA_DIR (default ./tests/data).
+                        --format selects text (default) or json output.
 
 OPTIONS:
     -o <OUTPUT>         Path to the output file (object file by default)
@@ -42,12 +49,144 @@ fn print_version() {
     println!("  Optimization: monomorphization expansion enabled");
 }
 
+fn run_test_command(args: &[String]) -> ! {
+    let mut path: Option<String> = None;
+    let mut test_data_dir: Option<String> = None;
+    let mut format = "text".to_string();
+    let mut import_paths = Vec::new();
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--test-data-dir" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("--test-data-dir requires a value");
+                    process::exit(1);
+                }
+                test_data_dir = Some(args[i].clone());
+            }
+            "--format" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("--format requires a value (text or json)");
+                    process::exit(1);
+                }
+                format = args[i].clone();
+            }
+            arg if arg.starts_with("--test-data-dir=") => {
+                test_data_dir = Some(arg["--test-data-dir=".len()..].to_string());
+            }
+            arg if arg.starts_with("--format=") => {
+                format = arg["--format=".len()..].to_string();
+            }
+            "-I" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("-I requires a path");
+                    process::exit(1);
+                }
+                import_paths.push(args[i].clone());
+            }
+            arg if !arg.starts_with('-') => {
+                path = Some(arg.to_string());
+            }
+            other => {
+                eprintln!("Unknown argument: {}", other);
+                process::exit(1);
+            }
+        }
+        i += 1;
+    }
+
+    if format != "text" && format != "json" {
+        eprintln!("Unknown format '{}' (expected text or json)", format);
+        process::exit(1);
+    }
+    let path = path.unwrap_or_else(|| {
+        eprintln!("E998: No input file specified");
+        process::exit(1);
+    });
+
+    // Collect target files: a single .llm file or all .llm files under a directory.
+    let mut files = Vec::new();
+    let meta = std::fs::metadata(&path).unwrap_or_else(|e| {
+        eprintln!("E999: Could not read {}: {}", path, e);
+        process::exit(1);
+    });
+    if meta.is_dir() {
+        for entry in walkdir::WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
+            if entry.path().extension().and_then(|s| s.to_str()) == Some("llm") {
+                files.push(entry.path().display().to_string());
+            }
+        }
+        files.sort();
+    } else {
+        files.push(path.clone());
+    }
+
+    let mut reports = Vec::new();
+    for file in &files {
+        match llmlang::testing::run_tests(file, test_data_dir.as_deref(), &import_paths) {
+            Ok(report) => reports.push(report),
+            Err(err) => {
+                eprintln!("{}", err);
+                process::exit(1);
+            }
+        }
+    }
+
+    let total: usize = reports.iter().map(|r| r.total).sum();
+    let passed: usize = reports.iter().map(|r| r.passed).sum();
+    let failed: usize = reports.iter().map(|r| r.failed).sum();
+
+    if format == "json" {
+        let payload = serde_json::json!({
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "files": reports,
+        });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+    } else {
+        for report in &reports {
+            if report.total == 0 {
+                continue;
+            }
+            println!("Running {} tests from {}", report.total, report.file);
+            for r in &report.results {
+                if r.passed {
+                    println!("  PASS {} ({} ns)", r.name, r.duration_ns);
+                } else {
+                    println!(
+                        "  FAIL {} ({} ns): {}",
+                        r.name,
+                        r.duration_ns,
+                        r.panic_message.as_deref().unwrap_or("test failed")
+                    );
+                }
+            }
+        }
+        if total == 0 {
+            println!("0 tests found");
+        } else {
+            println!("Summary: {} passed, {} failed, {} total", passed, failed, total);
+        }
+    }
+
+    process::exit(if failed > 0 { 1 } else { 0 });
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() < 2 {
         print_help();
         process::exit(1);
+    }
+
+    if args[1] == "test" {
+        run_test_command(&args[2..]);
     }
 
     let mut input_path = None;
@@ -179,6 +318,11 @@ fn main() {
             }
             Expr::Metadata(tag, val, target) => {
                 if let Expr::String(tag_str) = &*tag {
+                    // M "test" definitions are isolated to the test harness
+                    // (llmlang test) and stripped from the production target.
+                    if tag_str == "test" {
+                        continue;
+                    }
                     if tag_str == "otel" {
                         if let Expr::String(span_name) = &*val {
                             if let Expr::Define(name, params, body, exported) = &*target {

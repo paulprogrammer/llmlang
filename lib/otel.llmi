@@ -1,0 +1,2 @@
+# OtelLog trace_id span_id parent_id name start_time end_time
+: emit_span 6

@@ -234,6 +234,18 @@ impl ServerHandler for LLMLangMCPHandler {
                         }
                     },
                     {
+                        "name": "run_symbol_tests",
+                        "description": "Discovers functions tagged M \"test\" in a .llm file, executes each in an isolated sandboxed process, and returns structured JSON mapping test failures to the target symbol's AST fingerprint",
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string", "description": "Path to the .llm source file containing the tests" },
+                                "test_data_dir": { "type": "string", "description": "Base path for external mock data, injected as TEST_DATA_DIR (default ./tests/data)" }
+                            },
+                            "required": ["path"]
+                        }
+                    },
+                    {
                         "name": "patch_symbol",
                         "description": "Replaces a function's body AST and rewrites the source file",
                         "input_schema": {
@@ -347,6 +359,39 @@ impl ServerHandler for LLMLangMCPHandler {
                         let matches = index.fingerprints.get(&hash).cloned().unwrap_or_default();
                         Ok(json!({
                             "content": [MessageContent::Text { text: format!("Functions with same structure as {}: {:?}", function_name, matches) }]
+                        }))
+                    }
+                    "run_symbol_tests" => {
+                        let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing path"))?.to_string();
+                        let test_data_dir = args.get("test_data_dir").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                        // The core engine compiles and executes test processes;
+                        // run it off the async executor.
+                        let report = tokio::task::spawn_blocking(move || {
+                            llmlang::testing::run_tests(&path, test_data_dir.as_deref(), &[])
+                        })
+                        .await
+                        .map_err(|e| Error::protocol(ErrorCode::InternalError, e.to_string()))?
+                        .map_err(|e| Error::protocol(ErrorCode::InternalError, e))?;
+
+                        // Map each failure to the target symbol's AST fingerprint.
+                        let mut failures = serde_json::Map::new();
+                        for r in report.results.iter().filter(|r| !r.passed) {
+                            failures.insert(r.fingerprint.clone(), json!({
+                                "symbol": r.name,
+                                "panic_message": r.panic_message,
+                            }));
+                        }
+                        let payload = json!({
+                            "file": report.file,
+                            "total": report.total,
+                            "passed": report.passed,
+                            "failed": report.failed,
+                            "results": report.results,
+                            "failures": failures,
+                        });
+                        Ok(json!({
+                            "content": [MessageContent::Text { text: serde_json::to_string(&payload).unwrap_or_default() }]
                         }))
                     }
                     "patch_symbol" => {

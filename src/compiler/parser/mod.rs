@@ -308,6 +308,17 @@ impl Parser {
                 let tag = self.parse_expr()?;
                 let val = self.parse_expr()?;
                 let target = self.parse_expr()?;
+                if let Expr::String(tag_str) = &tag {
+                    if tag_str == "test" {
+                        let mut inner = &target;
+                        while let Expr::Metadata(_, _, t) = inner {
+                            inner = t;
+                        }
+                        if !matches!(inner, Expr::Define(_, _, _, _)) {
+                            return Err(self.error("E019"));
+                        }
+                    }
+                }
                 Expr::Metadata(Box::new(tag), Box::new(val), Box::new(target))
             }
             Token::Export => {
