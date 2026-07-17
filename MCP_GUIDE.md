@@ -93,6 +93,7 @@ Build a new JSON representation of the AST body and pass it to `patch_symbol`.
   "name": "patch_symbol",
   "arguments": {
     "function_name": "calculate_tax",
+    "path": "src/billing.llm",
     "new_body_ast": {
       "BinaryOp": [
         "Mul",
@@ -104,6 +105,8 @@ Build a new JSON representation of the AST body and pass it to `patch_symbol`.
 }
 ```
 The server will automatically map the AST into valid `llmlang` prefix syntax and rewrite the target file deterministically.
+
+`path` is optional when the function name is unique across the indexed codebase. If the same name is defined in more than one file (common for `main`), the call is rejected with the list of candidate files and you must pass `path` to select one.
 
 ### Advanced Strategies
 - **Refactoring:** Use `find_callers` to locate all dependencies of a symbol before modifying its signature.

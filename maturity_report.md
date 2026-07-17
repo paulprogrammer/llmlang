@@ -61,6 +61,7 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 
 - **Impact**: medium-high — wrong tool output + client-triggerable DoS.
 - **Difficulty**: small.
+- **Status: FIXED (2026-07-17, `maturity-work` branch)**. The index was restructured so it cannot go stale by design: `call_graph`/`fingerprints` side maps were folded into per-symbol metadata keyed name → one entry per defining file, and re-indexing a file purges its old entries before inserting. The unwrap-based trailing-newline append was replaced with a single `fs::write`. Also fixed the related wrong-file targeting found while validating #1: `patch_symbol` on a name defined in multiple files (e.g. `main`) silently rewrote whichever file last won the index — it now rejects the ambiguous call listing the candidates, and takes an optional `path` argument to disambiguate. 4 index unit tests added; `tests/run_semantic_patch.py` now asserts both the rejection and the disambiguated patch, and runs in CI on both platforms.
 
 ### 7. Compiler aborts instead of reporting errors; all semantic errors say line 1
 `codegen/expr.rs` (many sites), `codegen/mod.rs:111`, `analysis/verify.rs:87` — `gen_expr` returns a bare value, so E003/E006/E007/E008/E010/E012/E013 are raised via `panic!`/`.expect()`; under `panic = "abort"` the compiler hard-aborts with no diagnostic formatting. Separately, every `CompileError` from verify/codegen hardcodes `line: 1`, so semantic errors cannot be located. Related: MCP serves `line: 0` placeholders as real symbol locations (`mcp_server.rs:97,104`).
