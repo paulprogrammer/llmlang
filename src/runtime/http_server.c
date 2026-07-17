@@ -428,25 +428,31 @@ typedef struct {
 __thread OtelContextState context_stack[256];
 __thread int context_stack_depth = 0;
 
+// Monotonic sequence mixed into span IDs so two spans entered back-to-back
+// on the same thread can't collide even where clock_gettime's resolution
+// is coarser than the time between the two calls.
+static _Atomic long g_otel_span_seq = 0;
+
 long llm_otel_enter_span() {
     if (context_stack_depth < 256) {
         context_stack[context_stack_depth].trace_id = current_trace_id;
         context_stack[context_stack_depth].span_id = current_span_id;
         context_stack_depth++;
     }
-    
+
     // Generate new trace ID if none exists (using clock nanoseconds for simple uniqueness)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    long r = (long)ts.tv_sec * 1000000000LL + ts.tv_nsec; 
-    
+    long r = (long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+
     if (current_trace_id == 0) {
         current_trace_id = r;
     }
-    
-    // Mix with thread id to ensure uniqueness for span
-    current_span_id = r ^ (long)pthread_self();
-    
+
+    // Mix with thread id and a global sequence counter to ensure uniqueness for span
+    long seq = atomic_fetch_add_explicit(&g_otel_span_seq, 1, memory_order_relaxed);
+    current_span_id = (r ^ (long)pthread_self()) + seq;
+
     return current_span_id;
 }
 

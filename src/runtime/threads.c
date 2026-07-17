@@ -124,16 +124,23 @@ long llm_join(long handle_ptr) {
         }
         pthread_mutex_unlock(&handle->mutex);
         
-        // Help the pool while waiting to avoid deadlock
+        // Help the pool while waiting to avoid deadlock: if every worker is
+        // itself blocked in llm_join on a queued child, nobody would ever
+        // run that child unless the joiner pitches in.
         llm_do_work();
-        
-        // If we still aren't done, wait a tiny bit or just loop
+
+        // llm_do_work() already found nothing to do above whenever the pool
+        // is idle, so a real completion of *our* handle only arrives via
+        // its own pthread_cond_signal — the timeout here is just a bound on
+        // how long we can go without re-checking the pool, not the thing
+        // that wakes us on success. 5ms (vs. the previous 1ms) cuts the
+        // lock/unlock churn on pool->mutex roughly 5x under heavy nested
+        // fork/join without meaningfully delaying deadlock-avoidance help.
         pthread_mutex_lock(&handle->mutex);
         if (!handle->done) {
-            // For now, a short cond_wait is safest
             struct timespec timeout;
             clock_gettime(CLOCK_REALTIME, &timeout);
-            timeout.tv_nsec += 1000000; // 1ms
+            timeout.tv_nsec += 5000000; // 5ms
             if (timeout.tv_nsec >= 1000000000) {
                 timeout.tv_nsec -= 1000000000;
                 timeout.tv_sec += 1;
