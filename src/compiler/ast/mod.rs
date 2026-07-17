@@ -24,7 +24,7 @@ pub enum Expr {
     Get(Box<Expr>, String, Box<Expr>),      // G instance field index
     Set(Box<Expr>, String, Box<Expr>, Box<Expr>), // S instance field index value
     If(Box<Expr>, Box<Expr>, Box<Expr>),    // ? cond true_branch false_branch
-    Expand(String),                         // ! name (reference to expand param)
+    Expand(String),                         // ` name (reference to expand param)
     Let(String, Box<Expr>, Box<Expr>),      // L name val body
     Import(String, String, usize),          // I module_alias symbol_name arity
     String(String),
@@ -53,7 +53,7 @@ pub enum Expr {
     MoneyStr(Box<Expr>),                    // % str expr
     TimeOp(Token, Box<Expr>, Box<Expr>),    // tn op T seconds
     TimeZone,                               // tz
-    Panic(Box<Expr>),                       // ! or ` message
+    Panic(Box<Expr>),                       // ! message
     Trap(Box<Expr>, Box<Expr>),             // ^ try fallback
     HttpClient(Box<Expr>, Box<Expr>, Box<Expr>), // http method url body
     HttpServer(Box<Expr>, Box<Expr>),       // srv op_code arg

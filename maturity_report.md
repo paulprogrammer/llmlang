@@ -30,6 +30,7 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 
 - **Impact**: high — data-destroying for the MCP patch workflow.
 - **Difficulty**: trivial–small; each fix is a one-liner. Add a parse→print→parse round-trip property test and re-enable `patch_test.llm`.
+- **Status: FIXED (2026-07-17, `maturity-work` branch)**. All 8 bugs fixed, plus 4 more found while writing the round-trip suite: `format_token` emitted `???` for `&`/`|`/`xor`; `Import` printed a trailing arity the parser rejects; whole floats printed as integers (`2.0` → `2` → `Integer`); string escaping missed `\` `\n` `\t` `\r`. 11 round-trip tests added in `display.rs` (including real files from `tests/lang/`), and the inverted `!`/`` ` `` doc-comments in `ast/mod.rs` corrected. MCP patch flow verified end-to-end in isolation. Notes: `patch_test.llm`'s exclusion from `llm-test` is legitimate (it is a fixture for `run_semantic_patch.py`, and its `main` takes params, so it isn't standalone-runnable); `run_semantic_patch.py` against the full `tests/lang/` dir still fails, but because of finding #6 — `patch_symbol("main")` matches another file's `main` and rewrites that file instead.
 
 ### 2. `llm_read` on raw fds: `FILE*` leak, silent data loss, null-deref
 `src/runtime/io.c:26` — `fgets(..., fdopen((int)handle, "r"))` creates a fresh stdio stream per call: never `fclose`d (leak per read), its read-ahead buffer swallows bytes after the first line (subsequent reads lose data), and a NULL `fdopen` return is passed straight to `fgets` (crash).
