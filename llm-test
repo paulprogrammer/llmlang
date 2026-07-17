@@ -52,22 +52,35 @@ done
 # real requests behind it.
 python3 -c '
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from urllib.parse import parse_qsl
+import json
 class Handler(BaseHTTPRequestHandler):
     timeout = 5
     def log_message(self, format, *args):
         pass
-    def do_GET(self):
+    def _send(self, body, ctype="text/plain"):
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Type", ctype)
         self.end_headers()
-        self.wfile.write(b"Hello from local mock server")
+        self.wfile.write(body)
+    def do_GET(self):
+        if self.path == "/json/get":
+            # httpbin.org/get-style JSON echo, so JSON-parsing tests do not
+            # need the live internet
+            self._send(json.dumps({"url": "http://127.0.0.1:8080/json/get",
+                                   "args": {}}).encode(), "application/json")
+        else:
+            self._send(b"Hello from local mock server")
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Echo: " + body)
+        if self.path == "/json/post":
+            # httpbin.org/post-style JSON echo: form-encoded body -> "form"
+            form = dict(parse_qsl(body.decode("utf-8", "replace"), keep_blank_values=True))
+            self._send(json.dumps({"form": form,
+                                   "url": "http://127.0.0.1:8080/json/post"}).encode(), "application/json")
+        else:
+            self._send(b"Echo: " + body)
 server = ThreadingHTTPServer(("127.0.0.1", 8080), Handler)
 server.daemon_threads = True
 server.serve_forever()

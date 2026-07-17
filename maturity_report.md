@@ -138,6 +138,8 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 | 38 | `gen_string_constant` names globals by 64-bit `DefaultHasher` — a hash collision silently aliases two string constants | `codegen/mod.rs:176–181` | improbable but silent miscompile | small |
 | 39 | `strtok_r` in `llm_split` treats the delimiter as a character **set**, not a literal — `sp s ", " i` behaves unexpectedly | `strings.c:67–86` | surprising semantics | small |
 
+**Fixed post-audit (2026-07-17, `maturity-work` branch)**: CI flakiness from live-internet dependence — `http_live_test.llm` and `https_json_test.llm` called httpbin.org, whose outages turned CI red (observed July 17). The `llm-test` mock server now provides httpbin-style JSON echo endpoints (`/json/get`, `/json/post`) and both tests target it; TLS client coverage remains with `https_test.llm`/`run_https_test.sh`.
+
 **Checked and explicitly fine**: `llm-clang`'s incremental runtime rebuild works (`-nt` guards + build-mode cache; only the unconditional `ar rcs` is wasteful); no redundant IR emission in the compile paths; node20 action deprecations are latent (runtime already forced to node24 via `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`).
 
 ---
