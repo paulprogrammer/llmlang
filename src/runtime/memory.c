@@ -3,7 +3,7 @@
 void* llm_rt_alloc(size_t size, LlmRtType type) {
     LlmRtHeader* header = malloc(sizeof(LlmRtHeader) + size);
     if (!header) return NULL;
-    header->magic = 0x4C4C4D52;
+    header->magic = RT_MAGIC;
     header->type = type;
     atomic_init(&header->ref_cnt, 1);
     return (void*)((char*)header + sizeof(LlmRtHeader));
@@ -28,9 +28,9 @@ void* llm_alloc(long size) {
 }
 
 void llm_drop(long s) {
-    if (s <= 1000) return;
+    if (s <= RT_MIN_HANDLE) return;
     LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
-    if (header->magic == 0x4C4C4D52) {
+    if (header->magic == RT_MAGIC) {
         // fetch_sub returns the pre-decrement value: only the caller that
         // releases the last reference proceeds to destroy. acq_rel pairs
         // the release of every other drop with the acquire of the final
@@ -92,9 +92,9 @@ void llm_drop(long s) {
 }
 
 long llm_dup(long s) {
-    if (s <= 1000) return s;
+    if (s <= RT_MIN_HANDLE) return s;
     LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
-    if (header->magic == 0x4C4C4D52) {
+    if (header->magic == RT_MAGIC) {
         // relaxed is enough: taking a new reference needs no ordering,
         // only that the increment itself is not lost.
         atomic_fetch_add_explicit(&header->ref_cnt, 1, memory_order_relaxed);
@@ -104,12 +104,12 @@ long llm_dup(long s) {
 
 
 void llm_drop_soa(long* instance, long field_count) {
-    if (!instance || (long)instance < 1000) return;
+    if (!instance || (long)instance < RT_MIN_HANDLE) return;
     
     // Free each column (index 1 to field_count)
     for (int i = 0; i < field_count; i++) {
         long col = instance[i + 1];
-        if (col > 1000) {
+        if (col > RT_MIN_HANDLE) {
             free((void*)col);
         }
     }

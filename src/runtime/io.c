@@ -25,9 +25,9 @@ static long read_line_from_fd(int fd) {
 }
 
 long llm_read(long handle) {
-    if (handle > 1000) {
+    if (handle > RT_MIN_HANDLE) {
         LlmRtHeader* header = (LlmRtHeader*)(handle - sizeof(LlmRtHeader));
-        if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_SOCKET) {
+        if (header->magic == RT_MAGIC && header->type == RT_TYPE_SOCKET) {
             int* sub_type = (int*)handle;
             if (*sub_type == 1) { // HttpServer
                 if (llm_http_server_accept) {
@@ -36,7 +36,7 @@ long llm_read(long handle) {
                 return 0;
             }
         }
-        if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_FILE) {
+        if (header->magic == RT_MAGIC && header->type == RT_TYPE_FILE) {
             LlmFile* lf = (LlmFile*)handle;
             char stack_buf[4096];
             if (!fgets(stack_buf, sizeof(stack_buf), lf->fp)) {
@@ -50,9 +50,9 @@ long llm_read(long handle) {
 }
 
 long llm_write(long handle, long s) {
-    if (handle > 1000) {
+    if (handle > RT_MIN_HANDLE) {
         LlmRtHeader* header = (LlmRtHeader*)(handle - sizeof(LlmRtHeader));
-        if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_SOCKET) {
+        if (header->magic == RT_MAGIC && header->type == RT_TYPE_SOCKET) {
             int* sub_type = (int*)handle;
             if (*sub_type == 2) { // HttpRequest
                 if (llm_http_server_respond) {
@@ -61,7 +61,7 @@ long llm_write(long handle, long s) {
                 return 0;
             }
         }
-        if (header->magic == 0x4C4C4D52 && header->type == RT_TYPE_FILE) {
+        if (header->magic == RT_MAGIC && header->type == RT_TYPE_FILE) {
             LlmFile* lf = (LlmFile*)handle;
             char* src = (char*)s;
             if (!src) return 0;
@@ -75,9 +75,17 @@ long llm_write(long handle, long s) {
     return (long)write((int)handle, src, strlen(src));
 }
 
+// Per-thread panic message, surfaced through `env "LLM_PANIC_MSG"` (see
+// llm_getenv below). A real setenv() here would mutate process-wide state:
+// panics on pool threads could race a getenv() call on any other thread.
+static __thread char* llm_panic_msg = NULL;
+
 long llm_getenv(long k) {
     char* key = (char*)k;
     if (!key) return (long)llm_rt_strdup("");
+    if (strcmp(key, "LLM_PANIC_MSG") == 0) {
+        return (long)llm_rt_strdup(llm_panic_msg ? llm_panic_msg : "");
+    }
     char* val = getenv(key);
     if (!val) return (long)llm_rt_strdup("");
     return (long)llm_rt_strdup(val);
@@ -88,7 +96,8 @@ __thread llm_trap_frame_t* llm_trap_stack = NULL;
 void llm_panic(long msg) {
     char* s = (char*)msg;
     // Record the message so trap fallbacks can recover it via `env "LLM_PANIC_MSG"`.
-    setenv("LLM_PANIC_MSG", s ? s : "Unknown error", 1);
+    free(llm_panic_msg);
+    llm_panic_msg = strdup(s ? s : "Unknown error");
     if (llm_trap_stack) {
         longjmp(llm_trap_stack->buf, 1);
     }

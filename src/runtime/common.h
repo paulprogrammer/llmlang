@@ -18,6 +18,20 @@ typedef struct llm_trap_frame {
 
 extern __thread llm_trap_frame_t* llm_trap_stack;
 
+// Magic value stamped into every LlmRtHeader (see below). A mismatch means
+// the value under inspection isn't a managed heap pointer.
+#define RT_MAGIC 0x4C4C4D52u
+
+// Handles at or below this value are treated as raw fds/small integers
+// rather than pointers to LlmRtHeader; above it, `handle - sizeof(header)`
+// is dereferenced. This is a heuristic, not a type tag (see finding #4 in
+// maturity_report.md — a busy process can hand out fds above this).
+#define RT_MIN_HANDLE 1000
+
+// Fixed-point scale for the Money type (4 decimal places); must match
+// `scale` in codegen/expr.rs's MoneyOp lowering.
+#define LLM_MONEY_SCALE 10000
+
 typedef enum {
     RT_TYPE_RAW = 0,
     RT_TYPE_STRING = 1,

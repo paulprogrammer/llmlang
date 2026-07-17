@@ -10,6 +10,10 @@
     L sub ss > s3 0 5
     . ? sr > sub "Hello" 0 ! "Sub failed"
     L csv "a,b,c"
-    ? sr sp $ csv "," 1 "b"
+    . ? sr sp $ csv "," 1 "b" 0 ! "Split failed"
+    L csv2 "a,,b"
+    . ? sr sp $ csv2 "," 1 "^$" 0 ! "Split empty-field failed"
+    L csv3 "a-b_c"
+    ? sr sp $ csv3 "-_" 0 "a-b_c"
         0
-        ! "Split failed"
+        ! "Split literal-delimiter failed"

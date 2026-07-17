@@ -9,9 +9,9 @@ typedef struct {
 } SqliteConn;
 
 static int is_string_cell(long val) {
-    if (val <= 1000) return 0;
+    if (val <= RT_MIN_HANDLE) return 0;
     LlmRtHeader* header = (LlmRtHeader*)(val - sizeof(LlmRtHeader));
-    return (header->type == RT_TYPE_STRING && (header->magic == 0x4C4C4D52 || header->magic == 0));
+    return (header->type == RT_TYPE_STRING && (header->magic == RT_MAGIC || header->magic == 0));
 }
 
 static void bind_stmt_params(sqlite3_stmt* stmt, long params_soa) {

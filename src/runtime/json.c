@@ -38,7 +38,7 @@ static int is_json_root(long handle) {
 }
 
 static cJSON* get_node(long handle) {
-    if (handle <= 1000) return NULL;
+    if (handle <= RT_MIN_HANDLE) return NULL;
     if (is_json_root(handle)) {
         return *(cJSON**)handle;
     }

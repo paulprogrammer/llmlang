@@ -64,31 +64,37 @@ long llm_strdup(long s) {
     return (long)llm_rt_strdup((char*)s);
 }
 
+// Splits on `delim` as a literal substring (not a character set — strtok_r's
+// set semantics made `sp s ", " i` behave unexpectedly, e.g. treating ' '
+// and ',' as interchangeable separators instead of the two-char sequence).
 long llm_split(long s, long d, long index) {
     char* src = (char*)s;
     char* delim = (char*)d;
-    if (!src || !delim) return (long)llm_rt_strdup("");
-    char* copy = strdup(src);
-    char* saveptr = NULL;
-    char* token = strtok_r(copy, delim, &saveptr);
+    if (!src || !delim || !*delim) return (long)llm_rt_strdup("");
+
+    size_t delim_len = strlen(delim);
+    const char* cursor = src;
     long current = 0;
-    while (token != NULL) {
+    while (1) {
+        const char* found = strstr(cursor, delim);
+        size_t tok_len = found ? (size_t)(found - cursor) : strlen(cursor);
         if (current == index) {
-            char* res = llm_rt_strdup(token);
-            free(copy);
+            char* res = llm_rt_alloc(tok_len + 1, RT_TYPE_STRING);
+            memcpy(res, cursor, tok_len);
+            res[tok_len] = '\0';
             return (long)res;
         }
-        token = strtok_r(NULL, delim, &saveptr);
+        if (!found) break;
+        cursor = found + delim_len;
         current++;
     }
-    free(copy);
     return (long)llm_rt_strdup("");
 }
 
 long llm_money_format(long val) {
     char buf[64];
-    long whole = val / 10000;
-    long frac = val % 10000;
+    long whole = val / LLM_MONEY_SCALE;
+    long frac = val % LLM_MONEY_SCALE;
     if (frac < 0) frac = -frac;
     sprintf(buf, "%ld.%04ld", whole, frac);
     return (long)llm_rt_strdup(buf);

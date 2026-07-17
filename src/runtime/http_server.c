@@ -5,9 +5,15 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <errno.h>
 #include "picohttpparser.h"
 
 // llm_http_client lives in http.c (shared curl_request routine, finding #23).
+
+// Upper bound on a buffered request (headers + body). Without this, a
+// client-supplied Content-Length (or an endless stream of headers with no
+// terminator) drives realloc growth with no ceiling.
+#define HTTP_MAX_REQUEST_BYTES (16 * 1024 * 1024)
 
 static long listen_server(const char* port_str) {
     int port = atoi(port_str);
@@ -120,8 +126,12 @@ long llm_http_server_accept(HttpServer* server) {
 
     size_t buf_size = 4096;
     char* buf = malloc(buf_size);
+    if (!buf) {
+        close(client_fd);
+        return 0;
+    }
     size_t total_read = 0;
-    
+
     HttpRequest* req = (HttpRequest*)llm_rt_alloc(sizeof(HttpRequest), RT_TYPE_SOCKET);
     req->type = 2;
     req->client_fd = client_fd;
@@ -155,8 +165,16 @@ long llm_http_server_accept(HttpServer* server) {
         } else {
             bytes = read(req->client_fd, buf + total_read, buf_size - total_read - 1);
         }
-        if (bytes <= 0) {
+        if (bytes < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // Transient TLS WANT_READ/WANT_WRITE or a spurious wakeup:
+                // the request isn't done, go back and poll again.
+                continue;
+            }
             break;
+        }
+        if (bytes == 0) {
+            break; // real EOF
         }
         size_t prev_read = total_read;
         total_read += bytes;
@@ -189,10 +207,22 @@ long llm_http_server_accept(HttpServer* server) {
 
             if (has_content_length) {
                 size_t header_len = (size_t)pret;
+                if (header_len + content_len > HTTP_MAX_REQUEST_BYTES) {
+                    free(buf);
+                    llm_drop((long)req);
+                    return 0;
+                }
                 if (total_read < header_len + content_len) {
                     if (header_len + content_len >= buf_size - 1) {
-                        buf_size = header_len + content_len + 1024;
-                        buf = realloc(buf, buf_size);
+                        size_t new_size = header_len + content_len + 1024;
+                        char* new_buf = realloc(buf, new_size);
+                        if (!new_buf) {
+                            free(buf);
+                            llm_drop((long)req);
+                            return 0;
+                        }
+                        buf = new_buf;
+                        buf_size = new_size;
                     }
                     continue;
                 }
@@ -234,8 +264,20 @@ long llm_http_server_accept(HttpServer* server) {
 
         // pret == -2: partial request
         if (total_read >= buf_size - 1) {
-            buf_size *= 2;
-            buf = realloc(buf, buf_size);
+            if (buf_size * 2 > HTTP_MAX_REQUEST_BYTES) {
+                free(buf);
+                llm_drop((long)req);
+                return 0;
+            }
+            size_t new_size = buf_size * 2;
+            char* new_buf = realloc(buf, new_size);
+            if (!new_buf) {
+                free(buf);
+                llm_drop((long)req);
+                return 0;
+            }
+            buf = new_buf;
+            buf_size = new_size;
         }
     }
 
@@ -244,11 +286,30 @@ long llm_http_server_accept(HttpServer* server) {
     return 0;
 }
 
+// Writes exactly `len` bytes, looping through partial writes and transient
+// EAGAIN/EINTR instead of silently truncating the response on the first
+// short write.
 static void http_write(HttpRequest* req, const char* data, size_t len) {
-    if (req->tls_ctx) {
-        llm_tls_write(req->tls_ctx, (const unsigned char*)data, len);
-    } else {
-        write(req->client_fd, data, len);
+    size_t total_written = 0;
+    while (total_written < len) {
+        ssize_t n;
+        if (req->tls_ctx) {
+            n = llm_tls_write(req->tls_ctx, (const unsigned char*)(data + total_written), len - total_written);
+        } else {
+            n = write(req->client_fd, data + total_written, len - total_written);
+        }
+        if (n > 0) {
+            total_written += (size_t)n;
+            continue;
+        }
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            usleep(1000);
+            continue;
+        }
+        break; // real error (e.g. peer closed the connection); give up
     }
 }
 
