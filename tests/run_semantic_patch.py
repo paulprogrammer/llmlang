@@ -1,6 +1,5 @@
 import subprocess
 import json
-import time
 import os
 
 # Create a dummy .llm file for patching
@@ -16,8 +15,16 @@ with open("tests/lang/patch_test.llm", "w") as f:
 # Start MCP Server
 proc = subprocess.Popen(["cargo", "run", "--bin", "llm-mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 
+
+def rpc(request):
+    proc.stdin.write(json.dumps(request) + "\n")
+    proc.stdin.flush()
+    if "id" in request:
+        return proc.stdout.readline().strip()
+
+
 # 0. Initialize
-init_req = {
+print("Sent initialize:", rpc({
     "jsonrpc": "2.0",
     "id": 0,
     "method": "initialize",
@@ -26,59 +33,60 @@ init_req = {
         "capabilities": {},
         "clientInfo": {"name": "test", "version": "1.0"}
     }
-}
-proc.stdin.write(json.dumps(init_req) + "\n")
-proc.stdin.flush()
-print("Sent initialize:", proc.stdout.readline().strip())
+}))
+rpc({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
-init_notif = {
-    "jsonrpc": "2.0",
-    "method": "notifications/initialized"
-}
-proc.stdin.write(json.dumps(init_notif) + "\n")
-proc.stdin.flush()
-
-# 1. Analyze the codebase
-analyze_req = {
+# 1. Analyze the codebase (tests/lang defines `main` in many files)
+print("analyze_codebase:", rpc({
     "jsonrpc": "2.0",
     "id": 1,
     "method": "tools/call",
     "params": {
         "name": "analyze_codebase",
-        "arguments": {
-            "path": "tests/lang"
-        }
+        "arguments": {"path": "tests/lang"}
     }
-}
-proc.stdin.write(json.dumps(analyze_req) + "\n")
-proc.stdin.flush()
-print("Sent analyze_codebase")
-print("Response:", proc.stdout.readline().strip())
+}))
 
-# 2. Patch the main function
-# We will replace `+ $ x $ y` with `* $ x $ y`
-patch_req = {
+new_body = {
+    "BinaryOp": [
+        "Mul",
+        {"Borrow": {"Identifier": "x"}},
+        {"Borrow": {"Identifier": "y"}}
+    ]
+}
+
+# 2. Patching an ambiguous name without a path must be rejected,
+#    not silently rewrite whichever file happened to win the index.
+ambiguous = rpc({
     "jsonrpc": "2.0",
     "id": 2,
     "method": "tools/call",
     "params": {
         "name": "patch_symbol",
+        "arguments": {"function_name": "main", "new_body_ast": new_body}
+    }
+})
+print("ambiguous patch:", ambiguous)
+if "error" not in json.loads(ambiguous) or "multiple files" not in ambiguous:
+    print("FAILED: ambiguous patch_symbol was not rejected")
+    proc.terminate()
+    exit(1)
+
+# 3. Patch with the path to disambiguate:
+#    replace `+ $ x $ y` with `* $ x $ y`
+print("patch_symbol:", rpc({
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+        "name": "patch_symbol",
         "arguments": {
             "function_name": "main",
-            "new_body_ast": {
-                "BinaryOp": [
-                    "Mul",
-                    { "Borrow": { "Identifier": "x" } },
-                    { "Borrow": { "Identifier": "y" } }
-                ]
-            }
+            "path": "tests/lang/patch_test.llm",
+            "new_body_ast": new_body
         }
     }
-}
-proc.stdin.write(json.dumps(patch_req) + "\n")
-proc.stdin.flush()
-print("Sent patch_symbol")
-print("Response:", proc.stdout.readline().strip())
+}))
 
 # Close server
 proc.terminate()

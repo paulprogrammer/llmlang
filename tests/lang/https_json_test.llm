@@ -1,4 +1,6 @@
-// HTTPS Client and JSON Parsing Test utilizing httpbin.org
+// HTTP Client and nested JSON Parsing Test against the llm-test local
+// mock server (httpbin.org-style form echo; TLS client coverage lives
+// in https_test.llm / run_https_test.sh)
 I http post
 I json parse
 I json stringify
@@ -10,10 +12,10 @@ I json arr_len
 I json arr_get
 
 : main
-    L url "https://httpbin.org/post"
+    L url "http://127.0.0.1:8080/json/post"
     L payload "data={\"code\":200,\"status\":\"ok\",\"data\":{\"user\":\"Alice\",\"hobbies\":[\"reading\",\"coding\"]}}"
 
-    // Send HTTPS POST request
+    // Send HTTP POST request
     L res @2 post $ url $ payload
 
     // Parse the response

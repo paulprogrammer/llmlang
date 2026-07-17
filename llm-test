@@ -23,7 +23,7 @@ done
 if [ ${#TEST_FILES[@]} -eq 0 ]; then
     TEST_FILES=()
     for f in tests/lang/*.llm; do
-        if [[ "$(basename "$f")" != "http_server_test.llm" ]] && [[ "$(basename "$f")" != "https_test.llm" ]] && [[ "$(basename "$f")" != "http_router_test.llm" ]] && [[ "$(basename "$f")" != "http_dynamic_router_test.llm" ]] && [[ "$(basename "$f")" != "http_headers_test.llm" ]] && [[ "$(basename "$f")" != "http_db_test.llm" ]] && [[ "$(basename "$f")" != "patch_test.llm" ]]; then
+        if [[ "$(basename "$f")" != "http_server_test.llm" ]] && [[ "$(basename "$f")" != "https_test.llm" ]] && [[ "$(basename "$f")" != "http_router_test.llm" ]] && [[ "$(basename "$f")" != "http_dynamic_router_test.llm" ]] && [[ "$(basename "$f")" != "http_headers_test.llm" ]] && [[ "$(basename "$f")" != "http_db_test.llm" ]] && [[ "$(basename "$f")" != "patch_test.llm" ]] && [[ "$(basename "$f")" != "stdin_multiline_test.llm" ]]; then
             TEST_FILES+=("$f")
         fi
     done
@@ -52,22 +52,35 @@ done
 # real requests behind it.
 python3 -c '
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from urllib.parse import parse_qsl
+import json
 class Handler(BaseHTTPRequestHandler):
     timeout = 5
     def log_message(self, format, *args):
         pass
-    def do_GET(self):
+    def _send(self, body, ctype="text/plain"):
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Type", ctype)
         self.end_headers()
-        self.wfile.write(b"Hello from local mock server")
+        self.wfile.write(body)
+    def do_GET(self):
+        if self.path == "/json/get":
+            # httpbin.org/get-style JSON echo, so JSON-parsing tests do not
+            # need the live internet
+            self._send(json.dumps({"url": "http://127.0.0.1:8080/json/get",
+                                   "args": {}}).encode(), "application/json")
+        else:
+            self._send(b"Hello from local mock server")
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Echo: " + body)
+        if self.path == "/json/post":
+            # httpbin.org/post-style JSON echo: form-encoded body -> "form"
+            form = dict(parse_qsl(body.decode("utf-8", "replace"), keep_blank_values=True))
+            self._send(json.dumps({"form": form,
+                                   "url": "http://127.0.0.1:8080/json/post"}).encode(), "application/json")
+        else:
+            self._send(b"Echo: " + body)
 server = ThreadingHTTPServer(("127.0.0.1", 8080), Handler)
 server.daemon_threads = True
 server.serve_forever()
@@ -148,6 +161,37 @@ for test_file in "${APPS[@]}"; do
     
     rm -f "$bin_name"
 done
+
+# 3. Raw-fd stdin regression test: needs piped input, so it is excluded
+# from the plain loop above and run here with three lines on stdin.
+STDIN_TEST="tests/lang/stdin_multiline_test.llm"
+if [ -f "$STDIN_TEST" ]; then
+    bin_name="${STDIN_TEST%.llm}_bin"
+    ./llm-clang "$STDIN_TEST" "${OTHER_ARGS[@]}" -o "$bin_name"
+    if [ $? -eq 0 ] && printf 'alpha\nbeta\ngamma\n' | ./"$bin_name"; then
+        echo -e "${GREEN}[PASS]${NC} $(basename "$STDIN_TEST") (piped stdin)"
+        PASSED=$((PASSED + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} $(basename "$STDIN_TEST")"
+        FAILED=$((FAILED + 1))
+    fi
+    rm -f "$bin_name"
+fi
+
+# 4. Runtime C unit tests (thread-safety of the managed-object refcount)
+RT_RACE_TEST="tests/runtime/refcount_race_test.c"
+if [ -f "$RT_RACE_TEST" ]; then
+    bin_name="tests/runtime/refcount_race_test_bin"
+    if clang -O2 "$RT_RACE_TEST" src/runtime/memory.c -Isrc/runtime -lpthread -o "$bin_name" \
+        && ./"$bin_name" >/dev/null; then
+        echo -e "${GREEN}[PASS]${NC} refcount_race_test.c"
+        PASSED=$((PASSED + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} refcount_race_test.c"
+        FAILED=$((FAILED + 1))
+    fi
+    rm -f "$bin_name"
+fi
 
 # Cleanup library objects and signatures
 rm -f tests/lang/*.o tests/lang/*.llmi

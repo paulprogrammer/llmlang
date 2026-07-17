@@ -1,4 +1,28 @@
 #include "common.h"
+#include <errno.h>
+
+// Read one line from a raw fd byte-by-byte. stdio would be faster, but a
+// FILE* here either leaks (fresh fdopen per call) or reads ahead past the
+// newline and loses the buffered remainder when it is dropped. Reading
+// byte-wise consumes exactly one line, so consecutive calls see
+// consecutive lines and unread data stays available on the fd.
+static long read_line_from_fd(int fd) {
+    char stack_buf[4096];
+    size_t len = 0;
+    int saw_any = 0;
+    while (len < sizeof(stack_buf) - 1) {
+        char c;
+        ssize_t n = read(fd, &c, 1);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break; // EOF or error
+        saw_any = 1;
+        if (c == '\n') break;
+        stack_buf[len++] = c;
+    }
+    if (!saw_any) return 0;
+    stack_buf[len] = 0;
+    return (long)llm_rt_strdup(stack_buf);
+}
 
 long llm_read(long handle) {
     if (handle > 1000) {
@@ -22,12 +46,7 @@ long llm_read(long handle) {
             return (long)llm_rt_strdup(stack_buf);
         }
     }
-    char stack_buf[4096];
-    if (!fgets(stack_buf, sizeof(stack_buf), fdopen((int)handle, "r"))) {
-        return 0;
-    }
-    stack_buf[strcspn(stack_buf, "\n")] = 0;
-    return (long)llm_rt_strdup(stack_buf);
+    return read_line_from_fd((int)handle);
 }
 
 long llm_write(long handle, long s) {

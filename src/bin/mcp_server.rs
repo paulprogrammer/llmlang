@@ -19,17 +19,32 @@ use tokio::io::{stdin, stdout, AsyncBufReadExt, AsyncWriteExt, BufReader};
 const LLM_SPEC: &str = include_str!("../../LLM_SPEC.md");
 const MCP_GUIDE: &str = include_str!("../../MCP_GUIDE.md");
 
+#[derive(Debug)]
 struct SymbolMetadata {
     expr: Expr,
     path: String,
     line: usize,
+    calls: Vec<String>,
+    fingerprint: String,
 }
 
 struct CodebaseIndex {
-    functions: HashMap<String, SymbolMetadata>,
+    // A name can be defined in several files, so each name maps to one
+    // entry per defining file. Calls and fingerprints live on the entry
+    // itself: re-indexing a file replaces its entries wholesale, so the
+    // index cannot accumulate stale or duplicate data.
+    functions: HashMap<String, Vec<SymbolMetadata>>,
     shapes: HashMap<String, (Vec<String>, String, usize)>,
-    call_graph: HashMap<String, Vec<String>>,
-    fingerprints: HashMap<String, Vec<String>>, // hash -> [function_names]
+}
+
+fn paths_match(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (std::path::Path::new(a).canonicalize(), std::path::Path::new(b).canonicalize()) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
+    }
 }
 
 impl CodebaseIndex {
@@ -37,8 +52,70 @@ impl CodebaseIndex {
         Self {
             functions: HashMap::new(),
             shapes: HashMap::new(),
-            call_graph: HashMap::new(),
-            fingerprints: HashMap::new(),
+        }
+    }
+
+    /// Drop everything previously indexed from `path` so re-analysis
+    /// replaces a file's entries instead of appending to them.
+    fn purge_file(&mut self, path: &str) {
+        for metas in self.functions.values_mut() {
+            metas.retain(|m| m.path != path);
+        }
+        self.functions.retain(|_, metas| !metas.is_empty());
+        self.shapes.retain(|_, (_, p, _)| p != path);
+    }
+
+    fn index_exprs(&mut self, path: &str, expressions: Vec<Expr>) -> usize {
+        self.purge_file(path);
+        let mut count = 0;
+        for expr in expressions {
+            match expr {
+                Expr::Define(name, _, body, _) => {
+                    let calls = body.get_calls();
+                    let fp = body.structural_fingerprint();
+                    let mut hasher = Sha256::new();
+                    hasher.update(&fp);
+                    let hash = hex::encode(hasher.finalize());
+
+                    self.functions.entry(name).or_default().push(SymbolMetadata {
+                        expr: *body,
+                        path: path.to_string(),
+                        line: 0, // Rough estimation or we'd need AST pos
+                        calls,
+                        fingerprint: hash,
+                    });
+                    count += 1;
+                }
+                Expr::Shape(name, fields, _) => {
+                    self.shapes.insert(name, (fields, path.to_string(), 0));
+                }
+                _ => {}
+            }
+        }
+        count
+    }
+
+    /// Resolve a function name to a single definition. `path` disambiguates
+    /// when the same name is defined in more than one indexed file.
+    fn resolve_function(&self, name: &str, path: Option<&str>) -> Result<&SymbolMetadata, String> {
+        let metas = self
+            .functions
+            .get(name)
+            .filter(|m| !m.is_empty())
+            .ok_or_else(|| format!("Function not found: {}", name))?;
+        let known_paths: Vec<&str> = metas.iter().map(|m| m.path.as_str()).collect();
+        match path {
+            Some(p) => metas.iter().find(|m| paths_match(&m.path, p)).ok_or_else(|| {
+                format!(
+                    "Function '{}' is not defined in '{}'; known locations: {:?}",
+                    name, p, known_paths
+                )
+            }),
+            None if metas.len() == 1 => Ok(&metas[0]),
+            None => Err(format!(
+                "Function '{}' is defined in multiple files: {:?}; pass 'path' to disambiguate",
+                name, known_paths
+            )),
         }
     }
 }
@@ -82,30 +159,7 @@ impl LLMLangMCPHandler {
                     }
                 };
 
-                for expr in expressions {
-                    match expr {
-                        Expr::Define(name, _, body, _) => {
-                            let calls = body.get_calls();
-                            let fp = body.structural_fingerprint();
-                            let mut hasher = Sha256::new();
-                            hasher.update(&fp);
-                            let hash = hex::encode(hasher.finalize());
-
-                            index.functions.insert(name.clone(), SymbolMetadata {
-                                expr: *body,
-                                path: entry.path().display().to_string(),
-                                line: 0, // Rough estimation or we'd need AST pos
-                            });
-                            index.call_graph.insert(name.clone(), calls);
-                            index.fingerprints.entry(hash).or_default().push(name.clone());
-                            count += 1;
-                        }
-                        Expr::Shape(name, fields, _) => {
-                            index.shapes.insert(name, (fields, entry.path().display().to_string(), 0));
-                        }
-                        _ => {}
-                    }
-                }
+                count += index.index_exprs(&entry.path().display().to_string(), expressions);
             }
         }
         Ok(format!("Indexed {} functions and {} shapes", count, index.shapes.len()))
@@ -252,7 +306,8 @@ impl ServerHandler for LLMLangMCPHandler {
                             "type": "object",
                             "properties": {
                                 "function_name": { "type": "string", "description": "The name of the function to patch" },
-                                "new_body_ast": { "type": "object", "description": "The new AST structure for the function body (JSON format matching Expr struct)" }
+                                "new_body_ast": { "type": "object", "description": "The new AST structure for the function body (JSON format matching Expr struct)" },
+                                "path": { "type": "string", "description": "Source file defining the function; required when the name is defined in more than one indexed file" }
                             },
                             "required": ["function_name", "new_body_ast"]
                         }
@@ -294,11 +349,13 @@ impl ServerHandler for LLMLangMCPHandler {
                     "get_definition" => {
                         let name = args.get("name").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing name"))?;
                         let index = self.index.read().await;
-                        if let Some(meta) = index.functions.get(name) {
+                        if let Some(metas) = index.functions.get(name) {
+                            let text = metas.iter()
+                                .map(|meta| format!("Function: {}\nPath: {}\nLine: {}\nAST: {:?}", name, meta.path, meta.line, meta.expr))
+                                .collect::<Vec<_>>()
+                                .join("\n---\n");
                             Ok(json!({
-                                "content": [MessageContent::Text { 
-                                    text: format!("Function: {}\nPath: {}\nLine: {}\nAST: {:?}", name, meta.path, meta.line, meta.expr) 
-                                }]
+                                "content": [MessageContent::Text { text }]
                             }))
                         } else if let Some((fields, path, line)) = index.shapes.get(name) {
                             Ok(json!({
@@ -337,11 +394,12 @@ impl ServerHandler for LLMLangMCPHandler {
                         let symbol = args.get("symbol").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing symbol"))?;
                         let index = self.index.read().await;
                         let mut callers = Vec::new();
-                        for (caller, callees) in index.call_graph.iter() {
-                            if callees.contains(&symbol.to_string()) {
+                        for (caller, metas) in index.functions.iter() {
+                            if metas.iter().any(|m| m.calls.iter().any(|c| c == symbol)) {
                                 callers.push(caller.clone());
                             }
                         }
+                        callers.sort();
                         Ok(json!({
                             "content": [MessageContent::Text { text: format!("Callers of {}: {:?}", symbol, callers) }]
                         }))
@@ -349,14 +407,15 @@ impl ServerHandler for LLMLangMCPHandler {
                     "structural_search" => {
                         let function_name = args.get("function_name").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing function_name"))?;
                         let index = self.index.read().await;
-                        let meta = index.functions.get(function_name).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Function not found"))?;
-                        
-                        let fp = meta.expr.structural_fingerprint();
-                        let mut hasher = Sha256::new();
-                        hasher.update(&fp);
-                        let hash = hex::encode(hasher.finalize());
+                        let metas = index.functions.get(function_name).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Function not found"))?;
 
-                        let matches = index.fingerprints.get(&hash).cloned().unwrap_or_default();
+                        let target_fps: std::collections::HashSet<&str> =
+                            metas.iter().map(|m| m.fingerprint.as_str()).collect();
+                        let mut matches: Vec<String> = index.functions.iter()
+                            .filter(|(_, ms)| ms.iter().any(|m| target_fps.contains(m.fingerprint.as_str())))
+                            .map(|(n, _)| n.clone())
+                            .collect();
+                        matches.sort();
                         Ok(json!({
                             "content": [MessageContent::Text { text: format!("Functions with same structure as {}: {:?}", function_name, matches) }]
                         }))
@@ -397,14 +456,16 @@ impl ServerHandler for LLMLangMCPHandler {
                     "patch_symbol" => {
                         let function_name = args.get("function_name").and_then(|v| v.as_str()).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing function_name"))?;
                         let new_body_val = args.get("new_body_ast").ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Missing new_body_ast"))?;
-                        
+                        let path_arg = args.get("path").and_then(|v| v.as_str());
+
                         let new_body_ast: Expr = serde_json::from_value(new_body_val.clone())
                             .map_err(|e| Error::protocol(ErrorCode::InvalidParams, format!("Invalid AST: {}", e)))?;
 
-                        // 1. Find file path
+                        // 1. Find file path (errors if the name is ambiguous and no path was given)
                         let file_path = {
                             let index = self.index.read().await;
-                            let meta = index.functions.get(function_name).ok_or_else(|| Error::protocol(ErrorCode::InvalidParams, "Function not found"))?;
+                            let meta = index.resolve_function(function_name, path_arg)
+                                .map_err(|e| Error::protocol(ErrorCode::InvalidParams, e))?;
                             meta.path.clone()
                         };
 
@@ -440,12 +501,8 @@ impl ServerHandler for LLMLangMCPHandler {
                             }
                         }
 
-                        std::fs::write(&file_path, new_content.trim_end()).map_err(|e| Error::protocol(ErrorCode::InternalError, e.to_string()))?;
-                        
-                        // Ensure it has a trailing newline
-                        use std::io::Write;
-                        let mut file = std::fs::OpenOptions::new().append(true).open(&file_path).unwrap();
-                        writeln!(file).unwrap();
+                        std::fs::write(&file_path, format!("{}\n", new_content.trim_end()))
+                            .map_err(|e| Error::protocol(ErrorCode::InternalError, e.to_string()))?;
 
                         // 5. Re-analyze to update index
                         let _ = self.analyze_path(&file_path).await;
@@ -555,4 +612,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     server.start().await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(src: &str, filename: &str) -> Vec<Expr> {
+        let mut parser = Parser::new(Lexer::new(src), filename.to_string()).unwrap();
+        parser.parse_module().unwrap()
+    }
+
+    fn index_source(index: &mut CodebaseIndex, path: &str, src: &str) -> usize {
+        index.index_exprs(path, parse(src, path))
+    }
+
+    #[test]
+    fn reindexing_a_file_does_not_duplicate_entries() {
+        let mut index = CodebaseIndex::new();
+        let src = "# Point x y\n: main x y\n    + $ x $ y";
+        for _ in 0..3 {
+            index_source(&mut index, "a.llm", src);
+        }
+        assert_eq!(index.functions.get("main").map(|m| m.len()), Some(1));
+        assert_eq!(index.shapes.len(), 1);
+    }
+
+    #[test]
+    fn reindexing_drops_renamed_and_deleted_symbols() {
+        let mut index = CodebaseIndex::new();
+        index_source(&mut index, "a.llm", ": old_name x\n    $ x\n: gone x\n    $ x");
+        index_source(&mut index, "a.llm", ": new_name x\n    $ x");
+        assert!(index.functions.get("old_name").is_none());
+        assert!(index.functions.get("gone").is_none());
+        assert!(index.functions.get("new_name").is_some());
+    }
+
+    #[test]
+    fn purge_only_affects_the_reindexed_file() {
+        let mut index = CodebaseIndex::new();
+        index_source(&mut index, "a.llm", ": main\n    1");
+        index_source(&mut index, "b.llm", ": main\n    2");
+        index_source(&mut index, "a.llm", ": main\n    3");
+        let paths: Vec<&str> = index.functions["main"].iter().map(|m| m.path.as_str()).collect();
+        assert_eq!(paths.len(), 2);
+        assert!(paths.contains(&"a.llm") && paths.contains(&"b.llm"));
+    }
+
+    #[test]
+    fn resolve_function_disambiguates_by_path() {
+        let mut index = CodebaseIndex::new();
+        index_source(&mut index, "a.llm", ": main\n    1\n: only_here\n    1");
+        index_source(&mut index, "b.llm", ": main\n    2");
+
+        // Unique name resolves without a path.
+        assert_eq!(index.resolve_function("only_here", None).unwrap().path, "a.llm");
+        // Ambiguous name without a path is an error naming the candidates.
+        let err = index.resolve_function("main", None).unwrap_err();
+        assert!(err.contains("multiple files") && err.contains("a.llm") && err.contains("b.llm"), "{}", err);
+        // A path picks the right definition; a wrong path is an error.
+        assert_eq!(index.resolve_function("main", Some("b.llm")).unwrap().path, "b.llm");
+        assert!(index.resolve_function("main", Some("c.llm")).is_err());
+        assert!(index.resolve_function("missing", None).is_err());
+    }
 }

@@ -1,0 +1,16 @@
+// Regression test for llm_read on raw fds (maturity finding #2):
+// a per-call fdopen used to buffer past the first newline and leak the
+// FILE*, so every line after the first was silently lost.
+// Requires piped input — llm-test runs it as:
+//   printf 'alpha\nbeta\ngamma\n' | stdin_multiline_test_bin
+
+: main
+    . L a ( 0
+      ? sr $ a "^alpha$" 0 ! "line 1 mismatch"
+    . L b ( 0
+      ? sr $ b "^beta$" 0 ! "line 2 mismatch"
+    . L c ( 0
+      ? sr $ c "^gamma$" 0 ! "line 3 mismatch"
+    . L eof ( 0
+      ? = $ eof 0 0 ! "expected EOF after third line"
+    0
