@@ -68,10 +68,6 @@ impl Expr {
         }
     }
 
-    pub fn returns_ptr(&self) -> bool {
-        self.returns_ptr_with_stack(&[], &HashMap::new())
-    }
-
     pub fn is_pure(&self) -> bool {
         match self {
             Expr::Integer(_) | Expr::Float(_) | Expr::String(_) | Expr::Identifier(_) | Expr::DeBruijn(_) | Expr::Expand(_) => true,

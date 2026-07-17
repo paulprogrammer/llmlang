@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::compiler::ast::{Expr};
+use crate::compiler::ast::{infer_shape_from_stack as infer_shape, Expr};
 use crate::compiler::codegen::VariableState;
 use crate::compiler::lexer::Token;
 
@@ -9,24 +9,6 @@ pub struct VerificationContext {
     pub stack: Vec<VariableState>,
     pub stack_shapes: Vec<Option<String>>,
     pub expand_map: HashMap<String, usize>,
-}
-
-fn infer_shape(expr: &Expr, stack_shapes: &[Option<String>]) -> Option<String> {
-    match expr {
-        Expr::New(name, _) => Some(name.clone()),
-        Expr::Unpack(_, name) => Some(name.clone()),
-        Expr::Map(e, _, _) => infer_shape(e, stack_shapes),
-        Expr::Filter(e, _) => infer_shape(e, stack_shapes),
-        Expr::DeBruijn(idx) => {
-            if *idx < stack_shapes.len() {
-                stack_shapes[stack_shapes.len() - 1 - idx].clone()
-            } else {
-                None
-            }
-        }
-        Expr::Move(inner) | Expr::Borrow(inner) | Expr::MutBorrow(inner) => infer_shape(inner, stack_shapes),
-        _ => None,
-    }
 }
 
 use crate::compiler::error::CompileError;

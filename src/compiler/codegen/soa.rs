@@ -5,8 +5,10 @@ use inkwell::values::{BasicValue, BasicValueEnum, IntValue, PointerValue};
 
 // SoA (structure-of-arrays) codegen shared by the New/Map/Filter/Get/Set
 // arms in expr.rs. Descriptor layout: [count, col_ptr_0, col_ptr_1, ...],
-// one 8-byte slot per entry; each column is a `count`-element array of
-// 8-byte slots.
+// one SOA_SLOT_BYTES slot per entry; each column is a `count`-element array
+// of SOA_SLOT_BYTES slots.
+const SOA_SLOT_BYTES: u64 = 8;
+
 impl<'ctx> CodeGen<'ctx> {
     /// Allocate a SoA instance for `n_fields` columns of `count` elements
     /// and store the populated descriptor. Returns the descriptor as
@@ -28,7 +30,7 @@ impl<'ctx> CodeGen<'ctx> {
         for _ in 0..n_fields {
             let size_bytes = self
                 .builder
-                .build_int_mul(count, i64_type.const_int(8, false), "size")
+                .build_int_mul(count, i64_type.const_int(SOA_SLOT_BYTES, false), "size")
                 .unwrap();
             let call = self
                 .builder
@@ -41,7 +43,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap();
             members.push(ptr.into());
         }
-        let struct_size = (members.len() as u64) * 8;
+        let struct_size = (members.len() as u64) * SOA_SLOT_BYTES;
         let call = self
             .builder
             .build_call(alloc_fn, &[i64_type.const_int(struct_size, false).into()], "struct_ptr_raw")

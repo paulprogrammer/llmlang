@@ -97,7 +97,6 @@ fn test_positive_move_borrow() {
     let ast = parse_expr(input);
     let codegen = CodeGen::new(&context, "test", llmlang::Config::default());
     if let Expr::Define(name, params, body, exported) = ast { codegen.gen_function(&name, params, &body, exported, None).unwrap(); }
-    assert!(codegen.warnings.borrow().is_empty());
 }
 
 #[test]

@@ -13,6 +13,10 @@ pub mod shape;
 pub mod parallel;
 pub mod soa;
 
+/// Fixed-point scale for the Money type (4 decimal places); must match
+/// `LLM_MONEY_SCALE` in `src/runtime/common.h`.
+pub const MONEY_SCALE: u64 = 10000;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VariableState {
     Available,
@@ -58,8 +62,11 @@ pub struct CodeGen<'ctx> {
     pub module: Module<'ctx>,
     pub builder: Builder<'ctx>,
     pub shapes: std::cell::RefCell<HashMap<String, Vec<String>>>,
-    pub warnings: std::cell::RefCell<Vec<String>>,
     pub templates: std::cell::RefCell<HashMap<String, (Vec<Param>, Expr)>>,
+    /// global name -> original content, so a 64-bit hash collision between
+    /// two different string constants gets a disambiguated name instead of
+    /// silently aliasing them (see `gen_string_constant`).
+    pub string_constants: std::cell::RefCell<HashMap<String, String>>,
     pub config: Config,
     pub input_path: String,
     /// File stem of input_path, computed once (input_path never changes after construction).
@@ -74,7 +81,6 @@ pub struct CodeGen<'ctx> {
     pub parallel_depth: std::cell::Cell<usize>,
     pub max_parallel_depth: usize,
     pub stack_bottom: usize,
-    pub stack_size: usize,
     /// Monotonic counter for naming synthesized trap/parallel functions.
     pub synth_id: std::cell::Cell<usize>,
 }
@@ -151,8 +157,8 @@ impl<'ctx> CodeGen<'ctx> {
             module, 
             builder,
             shapes: std::cell::RefCell::new(HashMap::new()),
-            warnings: std::cell::RefCell::new(Vec::new()),
             templates: std::cell::RefCell::new(HashMap::new()),
+            string_constants: std::cell::RefCell::new(HashMap::new()),
             config,
             input_path: module_name.to_string(),
             module_name: cached_module_name,
@@ -165,7 +171,6 @@ impl<'ctx> CodeGen<'ctx> {
             parallel_depth: std::cell::Cell::new(0),
             max_parallel_depth,
             stack_bottom,
-            stack_size,
             synth_id: std::cell::Cell::new(0),
         }
     }
@@ -208,7 +213,29 @@ impl<'ctx> CodeGen<'ctx> {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         s.hash(&mut hasher);
         let hash = hasher.finish();
-        let global_name = format!("str_const_{:x}", hash);
+
+        // A 64-bit hash can collide between two different strings; verify
+        // the name actually belongs to this content and disambiguate with a
+        // suffix rather than silently aliasing two distinct constants.
+        let global_name = {
+            let mut interned = self.string_constants.borrow_mut();
+            let mut name = format!("str_const_{:x}", hash);
+            let mut suffix = 0u32;
+            loop {
+                match interned.get(&name) {
+                    Some(existing) if existing == s => break,
+                    Some(_) => {
+                        suffix += 1;
+                        name = format!("str_const_{:x}_{}", hash, suffix);
+                    }
+                    None => {
+                        interned.insert(name.clone(), s.to_string());
+                        break;
+                    }
+                }
+            }
+            name
+        };
 
         // Must mirror LlmRtHeader in src/runtime/common.h: {magic: u32,
         // type: u32, ref_cnt: atomic u32} — three 4-byte fields, no padding.

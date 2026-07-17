@@ -836,7 +836,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let rhs_val = self.gen_expr(right, stack, expand_map);
                 let lhs = self.as_int(lhs_val);
                 let rhs = self.as_int(rhs_val);
-                let scale = self.context.i64_type().const_int(10000, false);
+                let scale = self.context.i64_type().const_int(crate::compiler::codegen::MONEY_SCALE, false);
                 match op {
                     Token::Add => self.builder.build_int_add(lhs, rhs, "money_add").unwrap().into(),
                     Token::Sub => self.builder.build_int_sub(lhs, rhs, "money_sub").unwrap().into(),

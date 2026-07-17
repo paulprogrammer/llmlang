@@ -76,12 +76,14 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 
 - **Impact**: medium-high for anyone using the HTTP server primitives (correctness + DoS vector).
 - **Difficulty**: small each.
+- **Status: FIXED (2026-07-17, `maturity-work` branch)**. `http_write` now loops until all bytes are sent, retrying on `EINTR`/`EAGAIN` instead of returning after one short write. The request-read loop distinguishes transient `EAGAIN` (from `llm_tls_read`'s `WANT_READ`/`WANT_WRITE` mapping) from a real `bytes == 0` EOF — the former now retries via the existing poll loop instead of abandoning the request. The initial `malloc` and both `realloc` growth sites (Content-Length-driven and partial-request doubling) are now NULL-checked, freeing the buffer and dropping the request on failure instead of crashing on the next dereference. A new `HTTP_MAX_REQUEST_BYTES` (16 MiB) cap rejects a request whose declared or accumulated size would exceed it, closing the unbounded-allocation DoS vector.
 
 ### 9. Floats silently truncated to integers
 `sqlite_driver.c:100–101` (SQLite `FLOAT` cast to `long`), `json.c:163–165` (`json_get_float` is literally an alias of `json_get_int`).
 
 - **Impact**: medium — silent data loss.
 - **Difficulty**: small–medium, depending on whether the ABI can carry doubles.
+- **Investigated, deferred (2026-07-17)**: the ABI cannot carry doubles cheaply. Every extern/FFI call site in `codegen/expr.rs`'s generic `Apply` path (the mechanism `get_float`/`json_get_float` go through) declares the callee as `i64_type().fn_type(...)` uniformly — there is no per-function return-type registry the way `fn_returns_ptr` exists for pointers. Making `json_get_float` genuinely return a `double` means: (a) giving codegen a `fn_returns_float` registry so this one call site is declared and bitcast correctly, and (b) auditing every downstream consumer of an `Apply` result (assignment, SoA storage, string conversion, further arithmetic) to handle a real `FloatValue` instead of assuming `IntValue`, none of which currently has test coverage for a float-typed FFI result. That is a design decision (does the language get real double-carrying FFI, or does JSON/SQLite float access adopt the existing Money fixed-point convention instead?) rather than a mechanical fix, so it's left open pending a decision on which convention to adopt.
 
 ### 10. `cms_unwrap` does not parse CMS
 `crypto_cms.c:96–110` — fixed byte offsets (256-byte key, 16-byte IV) instead of ASN.1 traversal; misreads or overreads real CMS blobs. mbedtls return codes, `sscanf` results, and mallocs unchecked throughout `crypto*.c`.
@@ -117,11 +119,11 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 | 23 | **FIXED (2026-07-17)** — Three copies of the same ~30-line curl routine (incl. duplicated `ResponseBuffer`/`write_callback`); fixes like #18 need triple edits | `http.c` vs `http_server.c` | maintainability | small |
 | 24 | Pointer-returning-function policy duplicated in **four places** as string matching (`ends_with("_get"/"_query"/…)`); a user function named `foo_query` is misclassified | `analysis/mod.rs:37–57`, `codegen/mod.rs:105–114`, `expr.rs:371–374`, `mod.rs:448–458` | correctness + drift | medium (centralize; ideally signature metadata, not names) |
 | 25 | **FIXED (2026-07-17)** — SoA allocation/copy codegen pasted 3× (`New`/`Map`/`Filter`, ~80 lines); `Get`/`Set` field resolution near-identical | `expr.rs:144–255,735–755,913–1005` | maintainability | medium |
-| 26 | `infer_shape` duplicated verbatim | `codegen/shape.rs:13–29`, `verify.rs:14–30` | maintainability | small |
+| 26 | **FIXED (2026-07-17)** — `infer_shape` duplicated verbatim | `codegen/shape.rs:13–29`, `verify.rs:14–30` | maintainability | small |
 | 27 | Binary-discovery logic duplicated across languages (`llm-clang` finds `llmlang`; `find_llm_clang` finds `llm-clang`); three hand-rolled arg parsers with inconsistent missing-value handling (compile path silently ignores dangling `-o`; `--threads abc` silently falls back to 8) | `llm-clang:5–22`, `testing/mod.rs:135–159`, `main.rs` | maintainability, surprising CLI behavior | medium |
 | 28 | CI steps copy-pasted ~5× between `ci.yml` jobs and `release.yml` (byte-identical LLVM install blocks; LLVM `22` pinned in several places) | workflows | maintainability | medium (composite action) |
 | 29 | Thin pass-through wrappers (`db_connect`→`llm_db_connect`, etc.) doubling the runtime export surface | `db.c:211–230`, `http_server.c:413–427`, `file.c:24–26` | maintainability | trivial |
-| 30 | Dead code: `Expr::returns_ptr()` never called; `CodeGen::warnings` never used; `CodeGen::stack_size` write-only | `analysis/mod.rs:71`, `codegen/mod.rs:60,72` | hygiene | trivial |
+| 30 | **FIXED (2026-07-17)** — Dead code: `Expr::returns_ptr()` never called; `CodeGen::warnings` never used; `CodeGen::stack_size` write-only | `analysis/mod.rs:71`, `codegen/mod.rs:60,72` | hygiene | trivial |
 
 ---
 
@@ -130,14 +132,14 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 | # | Finding | Location | Impact | Difficulty |
 |---|---|---|---|---|
 | 31 | Inconsistent runtime error signaling: failures variously return `0`, `""`, `-1`, or panic; callers can't distinguish "empty result" from "error" (`http` returning `""` on both timeout and empty body caused a 30s CI mystery in July 2026) | pervasive in runtime | correctness/debuggability | medium (define a convention) |
-| 32 | `setenv` from `llm_panic` is not thread-safe (panics on pool threads can race `getenv` elsewhere); better home is a field in the `__thread` trap frame | `io.c:72` | low-probability race | small |
+| 32 | **FIXED (2026-07-17)** — `setenv` from `llm_panic` is not thread-safe (panics on pool threads can race `getenv` elsewhere); better home is a field in the `__thread` trap frame | `io.c:72` | low-probability race | small |
 | 33 | Silent truncation via fixed buffers: 4096-byte lines (`io.c`), 1024-byte binding files (`db.c:103`), 100 HTTP headers, 32 JSON/SoA fields, 256 OTEL context slots | scattered | silent data loss at limits | small each; documenting limits is the cheap half |
 | 34 | Nine `RefCell`/`Cell` fields on `CodeGen` because `gen_expr` takes `&self` — runtime borrow-panic risk, borrow churn in hot loops | `codegen/mod.rs:59–69` | maintainability | large (bundle with #7) |
-| 35 | Magic numbers: `0x4C4C4D52`, the `>1000` sentinel, socket subtype ints, money scale `10000`, element size `8` | scattered | maintainability; amplifies #4 | trivial (named constants) |
+| 35 | **FIXED (2026-07-17)** — Magic numbers: `0x4C4C4D52`, the `>1000` sentinel, socket subtype ints, money scale `10000`, element size `8` | scattered | maintainability; amplifies #4 | trivial (named constants) |
 | 36 | **FIXED (2026-07-17)** — Shell scripts lack `set -euo pipefail`: `llm-clang` doesn't check the runtime C compile or `ar` (failed runtime build links stale objects silently); `llm-test`'s fixed port 8080 forbids concurrent runs (bind failure swallowed); `libllm_opencl.so` copied into caller's cwd on every link; hardcoded Homebrew paths | `llm-clang`, `llm-test` | silent partial builds, flakiness | small |
 | 37 | Thread-pool has no shutdown path (`pool->shutdown` never set; `cond_signal` not broadcast); lazy `dlopen` in OpenCL dispatch is unsynchronized; OTEL span IDs are clock-derived and collision-prone | `threads.c`, `opencl_dispatch.c:11–22`, `http_server.c:451,458` | resource hygiene / telemetry quality | small–medium |
-| 38 | `gen_string_constant` names globals by 64-bit `DefaultHasher` — a hash collision silently aliases two string constants | `codegen/mod.rs:176–181` | improbable but silent miscompile | small |
-| 39 | `strtok_r` in `llm_split` treats the delimiter as a character **set**, not a literal — `sp s ", " i` behaves unexpectedly | `strings.c:67–86` | surprising semantics | small |
+| 38 | **FIXED (2026-07-17)** — `gen_string_constant` names globals by 64-bit `DefaultHasher` — a hash collision silently aliases two string constants | `codegen/mod.rs:176–181` | improbable but silent miscompile | small |
+| 39 | **FIXED (2026-07-17)** — `strtok_r` in `llm_split` treats the delimiter as a character **set**, not a literal — `sp s ", " i` behaves unexpectedly | `strings.c:67–86` | surprising semantics | small |
 
 **Cheap-wins batch fixed (2026-07-17, `maturity-work` branch)** — findings #12, #13, #18 (global init half), #22, #36:
 - **#12**: trap/parallel synthesized-function IDs now come from a shared monotonic `Cell<usize>` counter on `CodeGen` (`next_synth_id()`), replacing the O(n) `get_functions().count()` per site.
@@ -151,6 +153,19 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 **#23 fixed (2026-07-17, `maturity-work` branch)**: the three curl copies are now one `static long curl_request(method, url, body)` in `http.c`; `http_get`, `http_post`, and `llm_http_client` (moved from `http_server.c`, which no longer touches curl at all) are one-line wrappers. This is also the single place to add the #18 connection-reuse handle cache later.
 
 **Fixed post-audit (2026-07-17, `maturity-work` branch)**: CI flakiness from live-internet dependence — `http_live_test.llm` and `https_json_test.llm` called httpbin.org, whose outages turned CI red (observed July 17). The `llm-test` mock server now provides httpbin-style JSON echo endpoints (`/json/get`, `/json/post`) and both tests target it; TLS client coverage remains with `https_test.llm`/`run_https_test.sh`.
+
+**Second hygiene batch fixed (2026-07-17, `maturity-work` branch)** — findings #26, #30, #35, #38 (compiler side):
+- **#26**: the duplicated `infer_shape` logic (`codegen/shape.rs` vs `analysis/verify.rs`) is now one function, `infer_shape_from_stack` in `compiler/ast/mod.rs`; both call sites delegate to it (`CodeGen::infer_shape` adapts its `StackItem` slice into the shared `&[Option<String>]` shape once per call).
+- **#30**: removed `Expr::returns_ptr()` (confirmed zero call sites — `returns_ptr_with_stack` is what's actually used everywhere), the never-read `CodeGen::warnings` field, and the write-only `CodeGen::stack_size` field (kept as a local in `get_stack_info()`'s caller, since `max_parallel_depth` still needs it once at construction).
+- **#35**: `RT_MAGIC`, `RT_MIN_HANDLE`, and `LLM_MONEY_SCALE` are now named constants in `common.h`, replacing the repeated `0x4C4C4D52` / `1000` literals across `io.c`, `memory.c`, `sqlite_driver.c`, and `json.c`; `MONEY_SCALE` (Rust) and `SOA_SLOT_BYTES` mirror the money-scale and SoA element-size literals in `codegen/mod.rs`/`expr.rs`/`soa.rs`.
+- **#38**: `gen_string_constant` now tracks name → original-content in a new `CodeGen::string_constants` map. A 64-bit hash collision (two different strings hashing to the same `str_const_*` name) gets a disambiguating numeric suffix instead of silently reusing — and thus aliasing — the first string's global.
+
+**Third hygiene batch fixed (2026-07-17, `maturity-work` branch)** — findings #8, #32, #39 (runtime side):
+- **#8**: `http_write` loops until every byte is written, retrying on `EINTR`/`EAGAIN` instead of returning after a single short `write()`/`llm_tls_write()`. The request-read loop now tells transient `EAGAIN` (surfaced by `llm_tls_read` on TLS `WANT_READ`/`WANT_WRITE`) apart from a genuine `bytes == 0` EOF, retrying instead of abandoning a valid in-flight HTTPS request. The initial `malloc` and both `realloc` growth paths are NULL-checked (freeing the old buffer and dropping the request cleanly on failure), and a new `HTTP_MAX_REQUEST_BYTES` (16 MiB) cap rejects requests whose header-declared or accumulated size would exceed it.
+- **#32**: `llm_panic` no longer calls `setenv` (process-global, racy against any other thread's `getenv`). The panic message is now a `__thread` string; `llm_getenv` special-cases the `LLM_PANIC_MSG` key to read it, so the `env "LLM_PANIC_MSG"` convention existing `.llm` code and the test harness rely on (`tests/harness/fail_suite.llm`, `testing/mod.rs`) is unchanged, but no longer shared across threads.
+- **#39**: `llm_split` now finds `delim` as a literal substring (`strstr`-based scan) instead of handing it to `strtok_r`, which treated it as a set of interchangeable delimiter characters and collapsed consecutive delimiters. Regression coverage added to `tests/lang/strings.llm`: splitting `"a,,b"` on `","` now correctly yields an empty middle field, and splitting `"a-b_c"` on the literal (non-matching) two-char delimiter `"-_"` now yields the whole string as one field — both would have produced different results under the old character-set semantics.
+
+**#9 investigated, deferred (2026-07-17)**: see the finding's own status note — fixing it for real requires a float-returning-FFI convention (a `fn_returns_float` registry plus auditing every consumer of an `Apply` result), which is a design decision, not a mechanical fix.
 
 **Checked and explicitly fine**: `llm-clang`'s incremental runtime rebuild works (`-nt` guards + build-mode cache; only the unconditional `ar rcs` is wasteful); no redundant IR emission in the compile paths; node20 action deprecations are latent (runtime already forced to node24 via `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`).
 
