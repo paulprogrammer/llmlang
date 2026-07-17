@@ -3,7 +3,7 @@
 
 // curl_global_init is not thread-safe and must run exactly once before the
 // first curl_easy_init anywhere in the process (requests may start
-// concurrently on pool threads). http_server.c shares this guard.
+// concurrently on pool threads).
 static pthread_once_t curl_init_once = PTHREAD_ONCE_INIT;
 static void curl_do_global_init(void) {
     curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -31,9 +31,12 @@ static size_t write_callback(void* contents, size_t size, size_t nmemb, void* us
     return realsize;
 }
 
-long http_get(long url_ptr) {
-    char* url = (char*)url_ptr;
+// The one curl request routine: http_get, http_post, and llm_http_client
+// are thin wrappers, so behavior changes (timeouts, redirects, init) happen
+// in exactly one place.
+static long curl_request(const char* method, const char* url, const char* body) {
     if (!url) return (long)llm_rt_strdup("");
+    if (!method) method = "GET";
 
     llm_curl_ensure_init();
     CURL* curl = curl_easy_init();
@@ -54,6 +57,16 @@ long http_get(long url_ptr) {
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "llmlang-http-client/1.0");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+
+    if (strcasecmp(method, "POST") == 0) {
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body ? body : "");
+    } else if (strcasecmp(method, "GET") != 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method);
+        if (body) {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+        }
+    }
 
     CURLcode res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);
@@ -68,50 +81,16 @@ long http_get(long url_ptr) {
     return managed_res;
 }
 
+long http_get(long url_ptr) {
+    return curl_request("GET", (const char*)url_ptr, NULL);
+}
+
 long http_post(long url_ptr, long body_ptr) {
-    char* url = (char*)url_ptr;
-    char* body = (char*)body_ptr;
-    if (!url) return (long)llm_rt_strdup("");
+    return curl_request("POST", (const char*)url_ptr, (const char*)body_ptr);
+}
 
-    llm_curl_ensure_init();
-    CURL* curl = curl_easy_init();
-    if (!curl) return (long)llm_rt_strdup("");
-
-    struct ResponseBuffer chunk;
-    chunk.data = malloc(1);
-    if (!chunk.data) {
-        curl_easy_cleanup(curl);
-        return (long)llm_rt_strdup("");
-    }
-    chunk.data[0] = '\0';
-    chunk.size = 0;
-
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&chunk);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "llmlang-http-client/1.0");
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-
-    // Set POST options
-    curl_easy_setopt(curl, CURLOPT_POST, 1L);
-    if (body) {
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
-    } else {
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "");
-    }
-
-    CURLcode res = curl_easy_perform(curl);
-    curl_easy_cleanup(curl);
-
-    if (res != CURLE_OK) {
-        free(chunk.data);
-        return (long)llm_rt_strdup("");
-    }
-
-    long managed_res = (long)llm_rt_strdup(chunk.data);
-    free(chunk.data);
-    return managed_res;
+long llm_http_client(long method_ptr, long url_ptr, long body_ptr) {
+    return curl_request((const char*)method_ptr, (const char*)url_ptr, (const char*)body_ptr);
 }
 
 static int hex_val(char c) {

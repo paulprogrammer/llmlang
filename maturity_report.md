@@ -114,7 +114,7 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 
 | # | Finding | Location | Impact | Difficulty |
 |---|---|---|---|---|
-| 23 | Three copies of the same ~30-line curl routine (incl. duplicated `ResponseBuffer`/`write_callback`); fixes like #18 need triple edits | `http.c` vs `http_server.c` | maintainability | small |
+| 23 | **FIXED (2026-07-17)** — Three copies of the same ~30-line curl routine (incl. duplicated `ResponseBuffer`/`write_callback`); fixes like #18 need triple edits | `http.c` vs `http_server.c` | maintainability | small |
 | 24 | Pointer-returning-function policy duplicated in **four places** as string matching (`ends_with("_get"/"_query"/…)`); a user function named `foo_query` is misclassified | `analysis/mod.rs:37–57`, `codegen/mod.rs:105–114`, `expr.rs:371–374`, `mod.rs:448–458` | correctness + drift | medium (centralize; ideally signature metadata, not names) |
 | 25 | SoA allocation/copy codegen pasted 3× (`New`/`Map`/`Filter`, ~80 lines); `Get`/`Set` field resolution near-identical | `expr.rs:144–255,735–755,913–1005` | maintainability | medium |
 | 26 | `infer_shape` duplicated verbatim | `codegen/shape.rs:13–29`, `verify.rs:14–30` | maintainability | small |
@@ -145,6 +145,8 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 - **#18**: `llm_curl_ensure_init()` (a `pthread_once` around `curl_global_init`, defined in `http.c`, declared in `common.h`, shared by `http_server.c`) runs before every `curl_easy_init`, eliminating the multi-thread lazy-init race. Per-request handle churn (no connection/DNS/TLS-session reuse) remains open — medium, blocked on #23's dedup being the sane place to add a handle cache.
 - **#22**: both workflows gained `concurrency:` groups (CI cancels superseded runs; release never cancels) and `Swatinem/rust-cache@v2` (skipped for the Alpine matrix entry, which builds inside docker).
 - **#36**: `llm-clang` and `llm-test` now run under `set -eo pipefail` (`-u` deliberately omitted: macOS bash 3.2 trips on empty-array expansion); `llm-clang` aborts with a message if a runtime C compile or `ar` fails instead of silently linking stale objects, resolves Homebrew paths via `brew --prefix` (hardcoded paths only as fallback), and refreshes `./libllm_opencl.so` only when missing or stale; `llm-test` fails fast with the server log and port state when the mock server can't bind (previously a swallowed warning). The port is still fixed at 8080 because test files hardcode the URL — concurrent runs on one host fail loudly now, not silently.
+
+**#23 fixed (2026-07-17, `maturity-work` branch)**: the three curl copies are now one `static long curl_request(method, url, body)` in `http.c`; `http_get`, `http_post`, and `llm_http_client` (moved from `http_server.c`, which no longer touches curl at all) are one-line wrappers. This is also the single place to add the #18 connection-reuse handle cache later.
 
 **Fixed post-audit (2026-07-17, `maturity-work` branch)**: CI flakiness from live-internet dependence — `http_live_test.llm` and `https_json_test.llm` called httpbin.org, whose outages turned CI red (observed July 17). The `llm-test` mock server now provides httpbin-style JSON echo endpoints (`/json/get`, `/json/post`) and both tests target it; TLS client coverage remains with `https_test.llm`/`run_https_test.sh`.
 
