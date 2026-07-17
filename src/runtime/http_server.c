@@ -34,6 +34,7 @@ long llm_http_client(long method_ptr, long url_ptr, long body_ptr) {
     if (!url) return (long)llm_rt_strdup("");
     if (!method) method = "GET";
 
+    llm_curl_ensure_init();
     CURL* curl = curl_easy_init();
     if (!curl) return (long)llm_rt_strdup("");
 

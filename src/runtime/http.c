@@ -1,6 +1,17 @@
 #include "common.h"
 #include <curl/curl.h>
 
+// curl_global_init is not thread-safe and must run exactly once before the
+// first curl_easy_init anywhere in the process (requests may start
+// concurrently on pool threads). http_server.c shares this guard.
+static pthread_once_t curl_init_once = PTHREAD_ONCE_INIT;
+static void curl_do_global_init(void) {
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+}
+void llm_curl_ensure_init(void) {
+    pthread_once(&curl_init_once, curl_do_global_init);
+}
+
 struct ResponseBuffer {
     char* data;
     size_t size;
@@ -24,6 +35,7 @@ long http_get(long url_ptr) {
     char* url = (char*)url_ptr;
     if (!url) return (long)llm_rt_strdup("");
 
+    llm_curl_ensure_init();
     CURL* curl = curl_easy_init();
     if (!curl) return (long)llm_rt_strdup("");
 
@@ -61,6 +73,7 @@ long http_post(long url_ptr, long body_ptr) {
     char* body = (char*)body_ptr;
     if (!url) return (long)llm_rt_strdup("");
 
+    llm_curl_ensure_init();
     CURL* curl = curl_easy_init();
     if (!curl) return (long)llm_rt_strdup("");
 

@@ -124,6 +124,11 @@ __attribute__((weak)) long http_https_serve(long port_ptr, long cert_ptr, long k
 __attribute__((weak)) long http_accept(long server_ptr);
 __attribute__((weak)) long http_respond(long req_ptr, long data_ptr);
 
+// One-time process-wide curl_global_init (defined in http.c). Must be called
+// before any curl_easy_init: lazy per-easy init is not thread-safe, and
+// requests can start concurrently on pool threads.
+void llm_curl_ensure_init(void);
+
 void* llm_tls_config_init(const char* cert_str, const char* key_str, int enable_legacy);
 void* llm_tls_ctx_init(void* config_ptr, int* fd_ptr);
 int llm_tls_handshake(void* ctx);

@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
 
+# One release run per tag; never cancel a release mid-publish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -41,6 +46,12 @@ jobs:
 
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
+
+    # Alpine builds run inside a docker container with its own toolchain,
+    # so the host cargo cache is useless there.
+    - name: Cache cargo registry and build artifacts
+      if: matrix.os != 'alpine'
+      uses: Swatinem/rust-cache@v2
 
     - name: Install LLVM (Linux)
       if: matrix.os == 'linux'

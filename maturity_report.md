@@ -96,17 +96,17 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 | # | Finding | Location | Impact | Difficulty |
 |---|---|---|---|---|
 | 11 | Whole-module verification runs **twice** (`verify_module`, then again per-function in `gen_function`), cloning shape/function maps per function | `main.rs:301`, `codegen/mod.rs:71–113`, `verify.rs:79–80` | ~2× verification cost, grows with module size | medium |
-| 12 | `get_functions().count()` as unique-ID generator per trap/parallel site → O(n²) codegen | `expr.rs:1089`, `parallel.rs:17` | moderate on trap-heavy code | trivial (monotonic counter) |
-| 13 | `get_module_name()`/`mangle_name()` re-parse the path and re-hash on **every identifier resolution** | `symbol.rs:13–20,50–56` | hot-path allocation churn | small (compute once) |
+| 12 | **FIXED (2026-07-17)** — `get_functions().count()` as unique-ID generator per trap/parallel site → O(n²) codegen | `expr.rs:1089`, `parallel.rs:17` | moderate on trap-heavy code | trivial (monotonic counter) |
+| 13 | **FIXED (2026-07-17)** — `get_module_name()`/`mangle_name()` re-parse the path and re-hash on **every identifier resolution** | `symbol.rs:13–20,50–56` | hot-path allocation churn | small (compute once) |
 | 14 | Fixed-point type inference (≤100 iters) recomputes names and re-walks all bodies per iteration | `codegen/mod.rs:322–364` | moderate | small |
 | 15 | Template bodies deep-cloned at every call site; every arg subtree cloned for a rare db-query rewrite | `expr.rs:296–322,378` | moderate | medium |
 | 16 | `prune_dead_code` rescans all expressions per worklist item → O(defs²) | `analysis/mod.rs:355–376` | small today, grows | medium |
 | 17 | `regcomp` on every `sr` call; no compiled-pattern cache | `strings.c:44–54` | large for regex-in-loop | medium |
-| 18 | Fresh `curl_easy_init`/cleanup per request (no connection/DNS/TLS-session reuse); **no `curl_global_init` anywhere** (lazy-init race across threads) | `http.c`, `http_server.c` | latency on repeated calls; init race is a correctness footnote | trivial (global init) / medium (reuse) |
+| 18 | **FIXED — global init (2026-07-17); connection reuse still open** — Fresh `curl_easy_init`/cleanup per request (no connection/DNS/TLS-session reuse); **no `curl_global_init` anywhere** (lazy-init race across threads) | `http.c`, `http_server.c` | latency on repeated calls; init race is a correctness footnote | trivial (global init) / medium (reuse) |
 | 19 | Crypto ops re-seed entropy and re-parse PEM keys on every call | `crypto.c:34–47,151–155` | large per-op overhead | medium |
 | 20 | `llm_join` busy-polls with a 1 ms `timedwait` despite completion signaling | `threads.c:114–144` | wasted CPU while joining | small |
 | 21 | Test harness recompiles + relinks from scratch per file per run (PID-keyed temp dir, deleted after) | `testing/mod.rs:358–377` | dominant cost of `llmlang test` | medium (fingerprint-keyed cache) |
-| 22 | CI: no cargo/registry caching, no concurrency groups; every push cold-builds inkwell + LTO on 4 runners | `ci.yml`, `release.yml` | CI minutes/cost | small (`rust-cache` + `concurrency:`) |
+| 22 | **FIXED (2026-07-17)** — CI: no cargo/registry caching, no concurrency groups; every push cold-builds inkwell + LTO on 4 runners | `ci.yml`, `release.yml` | CI minutes/cost | small (`rust-cache` + `concurrency:`) |
 
 ---
 
@@ -134,10 +134,17 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 | 33 | Silent truncation via fixed buffers: 4096-byte lines (`io.c`), 1024-byte binding files (`db.c:103`), 100 HTTP headers, 32 JSON/SoA fields, 256 OTEL context slots | scattered | silent data loss at limits | small each; documenting limits is the cheap half |
 | 34 | Nine `RefCell`/`Cell` fields on `CodeGen` because `gen_expr` takes `&self` — runtime borrow-panic risk, borrow churn in hot loops | `codegen/mod.rs:59–69` | maintainability | large (bundle with #7) |
 | 35 | Magic numbers: `0x4C4C4D52`, the `>1000` sentinel, socket subtype ints, money scale `10000`, element size `8` | scattered | maintainability; amplifies #4 | trivial (named constants) |
-| 36 | Shell scripts lack `set -euo pipefail`: `llm-clang` doesn't check the runtime C compile or `ar` (failed runtime build links stale objects silently); `llm-test`'s fixed port 8080 forbids concurrent runs (bind failure swallowed); `libllm_opencl.so` copied into caller's cwd on every link; hardcoded Homebrew paths | `llm-clang`, `llm-test` | silent partial builds, flakiness | small |
+| 36 | **FIXED (2026-07-17)** — Shell scripts lack `set -euo pipefail`: `llm-clang` doesn't check the runtime C compile or `ar` (failed runtime build links stale objects silently); `llm-test`'s fixed port 8080 forbids concurrent runs (bind failure swallowed); `libllm_opencl.so` copied into caller's cwd on every link; hardcoded Homebrew paths | `llm-clang`, `llm-test` | silent partial builds, flakiness | small |
 | 37 | Thread-pool has no shutdown path (`pool->shutdown` never set; `cond_signal` not broadcast); lazy `dlopen` in OpenCL dispatch is unsynchronized; OTEL span IDs are clock-derived and collision-prone | `threads.c`, `opencl_dispatch.c:11–22`, `http_server.c:451,458` | resource hygiene / telemetry quality | small–medium |
 | 38 | `gen_string_constant` names globals by 64-bit `DefaultHasher` — a hash collision silently aliases two string constants | `codegen/mod.rs:176–181` | improbable but silent miscompile | small |
 | 39 | `strtok_r` in `llm_split` treats the delimiter as a character **set**, not a literal — `sp s ", " i` behaves unexpectedly | `strings.c:67–86` | surprising semantics | small |
+
+**Cheap-wins batch fixed (2026-07-17, `maturity-work` branch)** — findings #12, #13, #18 (global init half), #22, #36:
+- **#12**: trap/parallel synthesized-function IDs now come from a shared monotonic `Cell<usize>` counter on `CodeGen` (`next_synth_id()`), replacing the O(n) `get_functions().count()` per site.
+- **#13**: module name (file stem) and the `__llm_{hash}_` mangle prefix are computed once in `CodeGen::new` (`input_path` is construction-only) and cached as fields; `get_module_name()` now returns `&str`.
+- **#18**: `llm_curl_ensure_init()` (a `pthread_once` around `curl_global_init`, defined in `http.c`, declared in `common.h`, shared by `http_server.c`) runs before every `curl_easy_init`, eliminating the multi-thread lazy-init race. Per-request handle churn (no connection/DNS/TLS-session reuse) remains open — medium, blocked on #23's dedup being the sane place to add a handle cache.
+- **#22**: both workflows gained `concurrency:` groups (CI cancels superseded runs; release never cancels) and `Swatinem/rust-cache@v2` (skipped for the Alpine matrix entry, which builds inside docker).
+- **#36**: `llm-clang` and `llm-test` now run under `set -eo pipefail` (`-u` deliberately omitted: macOS bash 3.2 trips on empty-array expansion); `llm-clang` aborts with a message if a runtime C compile or `ar` fails instead of silently linking stale objects, resolves Homebrew paths via `brew --prefix` (hardcoded paths only as fallback), and refreshes `./libllm_opencl.so` only when missing or stale; `llm-test` fails fast with the server log and port state when the mock server can't bind (previously a swallowed warning). The port is still fixed at 8080 because test files hardcode the URL — concurrent runs on one host fail loudly now, not silently.
 
 **Fixed post-audit (2026-07-17, `maturity-work` branch)**: CI flakiness from live-internet dependence — `http_live_test.llm` and `https_json_test.llm` called httpbin.org, whose outages turned CI red (observed July 17). The `llm-test` mock server now provides httpbin-style JSON echo endpoints (`/json/get`, `/json/post`) and both tests target it; TLS client coverage remains with `https_test.llm`/`run_https_test.sh`.
 

@@ -61,6 +61,10 @@ pub struct CodeGen<'ctx> {
     pub templates: std::cell::RefCell<HashMap<String, (Vec<Param>, Expr)>>,
     pub config: Config,
     pub input_path: String,
+    /// File stem of input_path, computed once (input_path never changes after construction).
+    pub module_name: String,
+    /// `__llm_{hash(input_path):x}_` prefix used by mangle_name, computed once.
+    pub mangle_prefix: String,
     pub has_exports: std::cell::Cell<bool>,
     pub exports: std::cell::RefCell<Vec<String>>,
     pub imports: std::cell::RefCell<HashMap<String, String>>,
@@ -70,9 +74,19 @@ pub struct CodeGen<'ctx> {
     pub max_parallel_depth: usize,
     pub stack_bottom: usize,
     pub stack_size: usize,
+    /// Monotonic counter for naming synthesized trap/parallel functions.
+    pub synth_id: std::cell::Cell<usize>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
+    /// Unique ID for synthesized helper functions (trap try/fallback,
+    /// parallel tasks). Shared across both so names never collide.
+    pub fn next_synth_id(&self) -> usize {
+        let id = self.synth_id.get();
+        self.synth_id.set(id + 1);
+        id
+    }
+
     pub fn has_sufficient_stack(&self) -> bool {
         if self.stack_bottom == 0 {
             return true;
@@ -119,7 +133,19 @@ impl<'ctx> CodeGen<'ctx> {
         let (stack_bottom, stack_size) = get_stack_info();
         let max_parallel_depth = (stack_size / 32768).max(1);
 
-        Self { 
+        let cached_module_name = std::path::Path::new(module_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("main")
+            .to_string();
+        let mangle_prefix = {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            module_name.hash(&mut hasher);
+            format!("__llm_{:x}_", hasher.finish())
+        };
+
+        Self {
             context, 
             module, 
             builder,
@@ -128,6 +154,8 @@ impl<'ctx> CodeGen<'ctx> {
             templates: std::cell::RefCell::new(HashMap::new()),
             config,
             input_path: module_name.to_string(),
+            module_name: cached_module_name,
+            mangle_prefix,
             has_exports: std::cell::Cell::new(false),
             exports: std::cell::RefCell::new(Vec::new()),
             imports: std::cell::RefCell::new(HashMap::new()),
@@ -137,6 +165,7 @@ impl<'ctx> CodeGen<'ctx> {
             max_parallel_depth,
             stack_bottom,
             stack_size,
+            synth_id: std::cell::Cell::new(0),
         }
     }
 

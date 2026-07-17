@@ -5,18 +5,13 @@ use inkwell::values::FunctionValue;
 use inkwell::targets::{Target, TargetMachine, InitializationConfig, FileType};
 use inkwell::OptimizationLevel;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
 use inkwell::passes::PassBuilderOptions;
 
 impl<'ctx> CodeGen<'ctx> {
-    pub fn get_module_name(&self) -> String {
-        use std::path::Path;
-        Path::new(&self.input_path)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("main")
-            .to_string()
+    pub fn get_module_name(&self) -> &str {
+        // Computed once in CodeGen::new; input_path never changes afterwards.
+        &self.module_name
     }
 
     pub fn resolve_func_name(&self, name: &str) -> String {
@@ -49,10 +44,8 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub fn mangle_name(&self, name: &str) -> String {
         if name == "main" { return name.to_string(); }
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        self.input_path.hash(&mut hasher);
-        let hash = hasher.finish();
-        format!("__llm_{:x}_{}", hash, name)
+        // mangle_prefix is the input_path hash, computed once in CodeGen::new.
+        format!("{}{}", self.mangle_prefix, name)
     }
 
     pub fn gen_import(&self, _module_alias: &str, symbol_name: &str, arity: usize) {

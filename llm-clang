@@ -1,6 +1,10 @@
 #!/bin/bash
 # llm-clang - A wrapper to integrate llmlang with clang
 
+# -u is deliberately omitted: macOS ships bash 3.2, where expanding an empty
+# array ("${arr[@]}") trips `set -u`.
+set -eo pipefail
+
 # Path to the llmlang compiler
 if command -v llmlang >/dev/null 2>&1; then
     LLMLANG_BIN="llmlang"
@@ -76,9 +80,6 @@ if [ "$compile_only" = true ]; then
         for llm_file in "${llm_files[@]}"; do
             obj="${llm_file%.llm}.o"
             "$LLMLANG_BIN" "$llm_file" "${compiler_args[@]}" -o "$obj"
-            if [ $? -ne 0 ]; then
-                exit 1
-            fi
         done
         exit 0
     fi
@@ -93,9 +94,8 @@ done
 # Compile LLM files to temporary object files for linking
 for llm_file in "${llm_files[@]}"; do
     obj="${llm_file%.llm}.o"
-    "$LLMLANG_BIN" "$llm_file" "${compiler_args[@]}" -o "$obj"
-    if [ $? -ne 0 ]; then
-        echo "Error: llmlang failed to compile $llm_file"
+    if ! "$LLMLANG_BIN" "$llm_file" "${compiler_args[@]}" -o "$obj"; then
+        echo "Error: llmlang failed to compile $llm_file" >&2
         exit 1
     fi
     final_args+=("$obj")
@@ -133,36 +133,57 @@ fi
 EXTRA_CFLAGS=""
 EXTRA_LDFLAGS=""
 if [ "$(uname -s)" = "Darwin" ]; then
-    EXTRA_CFLAGS="-I/opt/homebrew/opt/mbedtls@3/include -I/usr/local/opt/mbedtls@3/include -I/opt/homebrew/include -I/usr/local/include"
-    EXTRA_LDFLAGS="-L/opt/homebrew/opt/mbedtls@3/lib -L/usr/local/opt/mbedtls@3/lib -L/opt/homebrew/lib -L/usr/local/lib"
+    if command -v brew >/dev/null 2>&1; then
+        BREW_PREFIX="$(brew --prefix)"
+        MBEDTLS_PREFIX="$(brew --prefix mbedtls@3 2>/dev/null || echo "$BREW_PREFIX/opt/mbedtls@3")"
+        EXTRA_CFLAGS="-I$MBEDTLS_PREFIX/include -I$BREW_PREFIX/include"
+        EXTRA_LDFLAGS="-L$MBEDTLS_PREFIX/lib -L$BREW_PREFIX/lib"
+    else
+        # No brew on PATH: fall back to the standard Homebrew locations
+        EXTRA_CFLAGS="-I/opt/homebrew/opt/mbedtls@3/include -I/usr/local/opt/mbedtls@3/include -I/opt/homebrew/include -I/usr/local/include"
+        EXTRA_LDFLAGS="-L/opt/homebrew/opt/mbedtls@3/lib -L/usr/local/opt/mbedtls@3/lib -L/opt/homebrew/lib -L/usr/local/lib"
+    fi
 fi
 
-# Compile all C runtime files
+# Compile all C runtime files. A failed compile must abort the link:
+# proceeding would silently link a stale object from a previous build.
 for c_file in "$RT_DIR"/*.c; do
     obj_file="$RT_OBJ_DIR/$(basename "$c_file" .c).o"
     if [ "$c_file" -nt "$obj_file" ] || [ "$RT_DIR/common.h" -nt "$obj_file" ]; then
-        clang $debug_flags -fPIC -c "$c_file" -o "$obj_file" -I"$RT_DIR" $EXTRA_CFLAGS
+        if ! clang $debug_flags -fPIC -c "$c_file" -o "$obj_file" -I"$RT_DIR" $EXTRA_CFLAGS; then
+            echo "Error: failed to compile runtime file $(basename "$c_file")" >&2
+            rm -f "$obj_file"
+            exit 1
+        fi
     fi
 done
 
 # Package runtime objects into a static archive
-ar rcs "$RT_OBJ_DIR/libllm_rt.a" "$RT_OBJ_DIR"/*.o
+if ! ar rcs "$RT_OBJ_DIR/libllm_rt.a" "$RT_OBJ_DIR"/*.o; then
+    echo "Error: failed to archive runtime objects into libllm_rt.a" >&2
+    exit 1
+fi
 
 # Compile OpenCL dynamic library plugin if present
 if [ -f "$RT_DIR/driver_src/opencl_driver.c" ]; then
     if [ "$RT_DIR/driver_src/opencl_driver.c" -nt "$RT_OBJ_DIR/libllm_opencl.so" ]; then
         clang $debug_flags -fPIC -shared "$RT_DIR/driver_src/opencl_driver.c" -o "$RT_OBJ_DIR/libllm_opencl.so" -I"$RT_DIR" -ldl
     fi
-    cp -f "$RT_OBJ_DIR/libllm_opencl.so" .
+    # The runtime dlopens this from the working directory; only refresh the
+    # copy when it is missing or stale instead of clobbering it on every link.
+    if [ ! -f ./libllm_opencl.so ] || [ "$RT_OBJ_DIR/libllm_opencl.so" -nt ./libllm_opencl.so ]; then
+        cp -f "$RT_OBJ_DIR/libllm_opencl.so" .
+    fi
 fi
 
-# Call clang to link the object files including the runtime static archive
+# Call clang to link the object files including the runtime static archive.
+# Capture the status without tripping set -e so temp objects still get cleaned.
+LINK_RET=0
 if [ "$(uname -s)" = "Darwin" ]; then
-    clang "${final_args[@]}" -Wl,-force_load,"$RT_OBJ_DIR/libllm_rt.a" -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lsqlite3 $EXTRA_LDFLAGS
+    clang "${final_args[@]}" -Wl,-force_load,"$RT_OBJ_DIR/libllm_rt.a" -lpthread -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lsqlite3 $EXTRA_LDFLAGS || LINK_RET=$?
 else
-    clang "${final_args[@]}" -Wl,--whole-archive -L"$RT_OBJ_DIR" -lllm_rt -Wl,--no-whole-archive -Wl,--as-needed -lpthread -ldl -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lsqlite3 -Wl,--no-as-needed
+    clang "${final_args[@]}" -Wl,--whole-archive -L"$RT_OBJ_DIR" -lllm_rt -Wl,--no-whole-archive -Wl,--as-needed -lpthread -ldl -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lsqlite3 -Wl,--no-as-needed || LINK_RET=$?
 fi
-LINK_RET=$?
 
 # Clean up transient intermediate object files
 for tmp in "${tmp_files[@]}"; do

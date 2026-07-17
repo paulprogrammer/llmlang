@@ -1086,7 +1086,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
 
-                let trap_id = self.module.get_functions().count();
+                let trap_id = self.next_synth_id();
                 let try_name = format!("trap_try_{}", trap_id);
                 let fallback_name = format!("trap_fallback_{}", trap_id);
 
