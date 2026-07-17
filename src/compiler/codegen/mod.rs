@@ -180,10 +180,12 @@ impl<'ctx> CodeGen<'ctx> {
         let hash = hasher.finish();
         let global_name = format!("str_const_{:x}", hash);
 
+        // Must mirror LlmRtHeader in src/runtime/common.h: {magic: u32,
+        // type: u32, ref_cnt: atomic u32} — three 4-byte fields, no padding.
         let header_type = self.context.struct_type(&[
             self.context.i32_type().into(),
-            self.context.i16_type().into(),
-            self.context.i16_type().into(),
+            self.context.i32_type().into(),
+            self.context.i32_type().into(),
         ], false);
 
         let struct_type = self.context.struct_type(&[
@@ -195,8 +197,8 @@ impl<'ctx> CodeGen<'ctx> {
             g
         } else {
             let magic_val = self.context.i32_type().const_int(0, false);
-            let type_val = self.context.i16_type().const_int(1, false); // RT_TYPE_STRING = 1
-            let ref_cnt_val = self.context.i16_type().const_int(1, false);
+            let type_val = self.context.i32_type().const_int(1, false); // RT_TYPE_STRING = 1
+            let ref_cnt_val = self.context.i32_type().const_int(1, false);
 
             let header_val = header_type.const_named_struct(&[
                 magic_val.into(),

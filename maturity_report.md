@@ -44,6 +44,7 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 
 - **Impact**: high — memory-unsafe under the language's own auto-parallelism.
 - **Difficulty**: small — `_Atomic` ops, widen to 32-bit.
+- **Status: FIXED (2026-07-17, `maturity-work` branch)**. `ref_cnt` is now `_Atomic unsigned int`: dup is `fetch_add` (relaxed), drop is `fetch_sub` (acq_rel) with only the releaser of the last reference destroying. The header was reordered to `{magic: u32, type: u32, ref_cnt: u32}` — three 4-byte fields, no padding — and `gen_string_constant` updated in lockstep (it materializes this header for string constants, previously as `{i32,i16,i16}`). New C-level regression test `tests/runtime/refcount_race_test.c` (8 threads × 200k balanced dup/drop, run by `llm-test`) fails against the old code with "object was freed while references remained" and passes now. Bonus fix: `llm-clang` now rebuilds runtime objects when `common.h` is newer, so header layout changes can no longer silently link stale objects (part of finding #36).
 
 ### 4. `handle > 1000` heuristic conflates file descriptors with heap pointers
 `io.c:4,34`, `memory.c:31,92,102`, and scattered — an fd above 1000 (easy under load) is dereferenced as `LlmRtHeader*` at `handle - sizeof(header)`: an arbitrary memory read used as a type check.

@@ -178,6 +178,21 @@ if [ -f "$STDIN_TEST" ]; then
     rm -f "$bin_name"
 fi
 
+# 4. Runtime C unit tests (thread-safety of the managed-object refcount)
+RT_RACE_TEST="tests/runtime/refcount_race_test.c"
+if [ -f "$RT_RACE_TEST" ]; then
+    bin_name="tests/runtime/refcount_race_test_bin"
+    if clang -O2 "$RT_RACE_TEST" src/runtime/memory.c -Isrc/runtime -lpthread -o "$bin_name" \
+        && ./"$bin_name" >/dev/null; then
+        echo -e "${GREEN}[PASS]${NC} refcount_race_test.c"
+        PASSED=$((PASSED + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} refcount_race_test.c"
+        FAILED=$((FAILED + 1))
+    fi
+    rm -f "$bin_name"
+fi
+
 # Cleanup library objects and signatures
 rm -f tests/lang/*.o tests/lang/*.llmi
 

@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <setjmp.h>
+#include <stdatomic.h>
 
 typedef struct llm_trap_frame {
     jmp_buf buf;
@@ -29,10 +30,16 @@ typedef enum {
     RT_TYPE_CRYPTO_KEY = 8
 } LlmRtType;
 
+// Layout note: this header is also materialized by the compiler for string
+// constants (gen_string_constant in codegen/mod.rs emits {i32, i32, i32}),
+// so the two definitions must stay in lockstep: three 4-byte fields, no
+// padding, sizeof == 12. ref_cnt is atomic because llm_fork shares managed
+// pointers with pool threads, and it is 32-bit so it cannot realistically
+// wrap.
 typedef struct {
     unsigned int magic;
-    unsigned short type;
-    unsigned short ref_cnt;
+    unsigned int type;
+    _Atomic unsigned int ref_cnt;
 } LlmRtHeader;
 
 typedef struct {

@@ -5,7 +5,7 @@ void* llm_rt_alloc(size_t size, LlmRtType type) {
     if (!header) return NULL;
     header->magic = 0x4C4C4D52;
     header->type = type;
-    header->ref_cnt = 1;
+    atomic_init(&header->ref_cnt, 1);
     return (void*)((char*)header + sizeof(LlmRtHeader));
 }
 
@@ -31,8 +31,11 @@ void llm_drop(long s) {
     if (s <= 1000) return;
     LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
     if (header->magic == 0x4C4C4D52) {
-        header->ref_cnt--;
-        if (header->ref_cnt > 0) return;
+        // fetch_sub returns the pre-decrement value: only the caller that
+        // releases the last reference proceeds to destroy. acq_rel pairs
+        // the release of every other drop with the acquire of the final
+        // one, so writes made through the object are visible before free.
+        if (atomic_fetch_sub_explicit(&header->ref_cnt, 1, memory_order_acq_rel) != 1) return;
         header->magic = 0; // Prevent double drop!
         switch (header->type) {
             case RT_TYPE_JSON: {
@@ -92,7 +95,9 @@ long llm_dup(long s) {
     if (s <= 1000) return s;
     LlmRtHeader* header = (LlmRtHeader*)(s - sizeof(LlmRtHeader));
     if (header->magic == 0x4C4C4D52) {
-        header->ref_cnt++;
+        // relaxed is enough: taking a new reference needs no ordering,
+        // only that the increment itself is not lost.
+        atomic_fetch_add_explicit(&header->ref_cnt, 1, memory_order_relaxed);
     }
     return s;
 }

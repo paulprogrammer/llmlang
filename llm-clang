@@ -140,7 +140,7 @@ fi
 # Compile all C runtime files
 for c_file in "$RT_DIR"/*.c; do
     obj_file="$RT_OBJ_DIR/$(basename "$c_file" .c).o"
-    if [ "$c_file" -nt "$obj_file" ]; then
+    if [ "$c_file" -nt "$obj_file" ] || [ "$RT_DIR/common.h" -nt "$obj_file" ]; then
         clang $debug_flags -fPIC -c "$c_file" -o "$obj_file" -I"$RT_DIR" $EXTRA_CFLAGS
     fi
 done
