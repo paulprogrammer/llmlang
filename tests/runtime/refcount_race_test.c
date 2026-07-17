@@ -9,6 +9,16 @@
 //         -Isrc/runtime -lpthread
 #include "common.h"
 
+// memory.c dispatches non-string drops through weak symbols; GNU ld
+// resolves undefined weak references to NULL but Mach-O ld does not, so
+// provide stubs. The test only allocates strings — these never run.
+void llm_drop_json(long s) { (void)s; }
+void llm_drop_socket(long s) { (void)s; }
+void llm_drop_tls_config(long s) { (void)s; }
+void llm_drop_tls_ctx(long s) { (void)s; }
+void llm_drop_crypto_key(long s) { (void)s; }
+void llm_drop_db(long s) { (void)s; }
+
 #define N_THREADS 8
 #define N_ITERS 200000
 
