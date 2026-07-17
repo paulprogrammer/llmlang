@@ -37,6 +37,7 @@ Root cause: the `!` vs `` ` `` mapping is inverted between the AST doc-comments 
 
 - **Impact**: high — core `(` operator.
 - **Difficulty**: small — cache the `FILE*` in a managed handle or use `read()` with a line buffer; add the NULL check.
+- **Status: FIXED (2026-07-17, `maturity-work` branch)**. The raw-fd path now reads byte-at-a-time via `read()` (with EINTR retry): no `FILE*` exists to leak or NULL-deref, and nothing is consumed past the newline, so consecutive reads see consecutive lines and unread data stays on the fd. A bad fd now returns 0 instead of crashing. Regression test `tests/lang/stdin_multiline_test.llm` reads three piped lines plus EOF (run by `llm-test` with piped stdin; verified to fail with "line 2 mismatch" against the old code). The managed `LlmFile` path was already correct and is unchanged.
 
 ### 3. Non-atomic refcounts on objects shared across threads
 `src/runtime/memory.c:8,34–35,95`, `common.h:35` — `ref_cnt` is a plain `unsigned short` mutated with `++`/`--`, while `llm_fork` hands the same managed pointers to pool threads. Racing dup/drop → lost counts → premature free → use-after-free. The 16-bit counter can also wrap.
