@@ -11,6 +11,7 @@ pub mod expr;
 pub mod symbol;
 pub mod shape;
 pub mod parallel;
+pub mod soa;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VariableState {

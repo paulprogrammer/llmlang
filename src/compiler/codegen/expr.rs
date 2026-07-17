@@ -1,7 +1,7 @@
 use crate::compiler::ast::Expr;
 use crate::compiler::lexer::Token;
 use crate::compiler::codegen::{CodeGen, StackItem, VariableState};
-use inkwell::values::{BasicValueEnum, BasicValue};
+use inkwell::values::BasicValueEnum;
 use std::collections::HashMap;
 
 impl<'ctx> CodeGen<'ctx> {
@@ -139,29 +139,8 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::New(shape_name, count_expr) => {
                 let count_val = self.gen_expr(count_expr, stack, expand_map);
                 let count = self.as_int(count_val);
-                let shapes = self.shapes.borrow();
-                let fields = shapes.get(shape_name).expect("E006");
-                let mut members: Vec<BasicValueEnum<'ctx>> = Vec::new();
-                members.push(count.into());
-                for _field_type_name in fields {
-                    let size_bytes = self.builder.build_int_mul(count, self.context.i64_type().const_int(8, false), "size").unwrap();
-                    let fn_type = self.context.ptr_type(inkwell::AddressSpace::default()).fn_type(&[self.context.i64_type().into()], false);
-                    let func = self.get_or_add_external_fn("llm_alloc", fn_type);
-                    let call = self.builder.build_call(func, &[size_bytes.into()], "col_ptr_raw").unwrap();
-                    let ptr_val = self.get_call_res(call);
-                    let ptr = self.builder.build_ptr_to_int(ptr_val.into_pointer_value(), self.context.i64_type(), "col_ptr").unwrap();
-                    members.push(ptr.into());
-                }
-                let struct_size = (members.len() as u64) * 8;
-                let fn_type = self.context.ptr_type(inkwell::AddressSpace::default()).fn_type(&[self.context.i64_type().into()], false);
-                let func = self.get_or_add_external_fn("llm_alloc", fn_type);
-                let call = self.builder.build_call(func, &[self.context.i64_type().const_int(struct_size, false).into()], "struct_ptr_raw").unwrap();
-                let struct_ptr_raw = self.get_call_res(call).into_pointer_value();
-                let struct_ptr_int = self.builder.build_ptr_to_int(struct_ptr_raw, self.context.i64_type(), "struct_ptr").unwrap();
-                for (i, val) in members.into_iter().enumerate() {
-                    let member_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(i as u64, false)], "member_ptr").unwrap() };
-                    self.builder.build_store(member_ptr, val).unwrap();
-                }
+                let n_fields = self.shapes.borrow().get(shape_name).expect("E006").len();
+                let (_, struct_ptr_int) = self.gen_soa_alloc(count, n_fields);
                 struct_ptr_int.into()
             }
             Expr::Get(instance_expr, field_name, index_expr) => {
@@ -170,42 +149,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let struct_ptr = self.builder.build_int_to_ptr(struct_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "struct_ptr").unwrap();
                 let index_val = self.gen_expr(index_expr, stack, expand_map);
                 let index = self.as_int(index_val);
-                let shapes = self.shapes.borrow();
-                let mut field_idx = 0;
-                let mut found = false;
-                let mut field_type_name = "i64";
-
-                let inferred = self.infer_shape(instance_expr, stack);
-                if let Some(ref shape_name) = inferred {
-                    if let Some(fields) = shapes.get(shape_name) {
-                        if let Some(idx) = fields.iter().position(|f| f == field_name) {
-                            field_idx = idx + 1;
-                            field_type_name = &fields[idx];
-                            found = true;
-                        }
-                    }
-                } else {
-                    for (_, fields) in shapes.iter() {
-                        if let Some(idx) = fields.iter().position(|f| f == field_name) {
-                            field_idx = idx + 1;
-                            field_type_name = &fields[idx];
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-
-                if !found { panic!("E007: field '{}' not found in shape '{:?}'", field_name, inferred); }
-                let llvm_field_type = self.get_llvm_type(field_type_name);
-                let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
-                let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
-                let col_ptr_int = self.as_int(col_ptr_int_val);
-                let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
-                let ptr_to_element = unsafe { self.builder.build_gep(llvm_field_type, col_ptr, &[index], "gep").unwrap() };
-                let loaded = self.builder.build_load(llvm_field_type, ptr_to_element, "load").unwrap();
-                if let Some(inst) = loaded.as_instruction_value() {
-                    inst.set_alignment(8).unwrap();
-                }
+                let (field_idx, field_type_name) = self.resolve_soa_field(instance_expr, field_name, stack);
+                let llvm_field_type = self.get_llvm_type(&field_type_name);
+                let (col_ptr, _) = self.gen_soa_col_ptr(struct_ptr, field_idx);
+                let loaded = self.gen_soa_elem_load(llvm_field_type, col_ptr, index);
                 self.maybe_drop_val(instance_expr, struct_ptr_val, stack);
                 loaded
             }
@@ -216,40 +163,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let index_val = self.gen_expr(index_expr, stack, expand_map);
                 let index = self.as_int(index_val);
                 let value = self.gen_expr(value_expr, stack, expand_map);
-                let shapes = self.shapes.borrow();
-                let mut field_idx = 0;
-                let mut found = false;
-                let mut field_type_name = "i64";
-
-                let inferred = self.infer_shape(instance_expr, stack);
-                if let Some(ref shape_name) = inferred {
-                    if let Some(fields) = shapes.get(shape_name) {
-                        if let Some(idx) = fields.iter().position(|f| f == field_name) {
-                            field_idx = idx + 1;
-                            field_type_name = &fields[idx];
-                            found = true;
-                        }
-                    }
-                } else {
-                    for (_, fields) in shapes.iter() {
-                        if let Some(idx) = fields.iter().position(|f| f == field_name) {
-                            field_idx = idx + 1;
-                            field_type_name = &fields[idx];
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-
-                if !found { panic!("E007"); }
-                let llvm_field_type = self.get_llvm_type(field_type_name);
-                let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
-                let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
-                let col_ptr_int = self.as_int(col_ptr_int_val);
-                let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
-                let ptr_to_element = unsafe { self.builder.build_gep(llvm_field_type, col_ptr, &[index], "gep").unwrap() };
-                let store_inst = self.builder.build_store(ptr_to_element, value).unwrap();
-                store_inst.set_alignment(8).unwrap();
+                let (field_idx, field_type_name) = self.resolve_soa_field(instance_expr, field_name, stack);
+                let llvm_field_type = self.get_llvm_type(&field_type_name);
+                let (col_ptr, _) = self.gen_soa_col_ptr(struct_ptr, field_idx);
+                self.gen_soa_elem_store(llvm_field_type, col_ptr, index, value);
                 self.maybe_drop_val(instance_expr, struct_ptr_val, stack);
                 value
             }
@@ -732,39 +649,12 @@ impl<'ctx> CodeGen<'ctx> {
                 let shape_name = self.infer_shape(inst_expr, stack).expect("E006");
                 let shapes = self.shapes.borrow();
                 let fields = shapes.get(&shape_name).expect("E006");
-                let mut members: Vec<BasicValueEnum<'ctx>> = Vec::new();
-                members.push(count.into());
-                for _field_type_name in fields {
-                    let size_bytes = self.builder.build_int_mul(count, self.context.i64_type().const_int(8, false), "size").unwrap();
-                    let fn_type = self.context.ptr_type(inkwell::AddressSpace::default()).fn_type(&[self.context.i64_type().into()], false);
-                    let func = self.get_or_add_external_fn("llm_alloc", fn_type);
-                    let call = self.builder.build_call(func, &[size_bytes.into()], "col_ptr_raw").unwrap();
-                    let ptr_val = self.get_call_res(call);
-                    let ptr = self.builder.build_ptr_to_int(ptr_val.into_pointer_value(), self.context.i64_type(), "col_ptr").unwrap();
-                    members.push(ptr.into());
-                }
-                let struct_size = (members.len() as u64) * 8;
-                let fn_type = self.context.ptr_type(inkwell::AddressSpace::default()).fn_type(&[self.context.i64_type().into()], false);
-                let func = self.get_or_add_external_fn("llm_alloc", fn_type);
-                let call = self.builder.build_call(func, &[self.context.i64_type().const_int(struct_size, false).into()], "struct_ptr_raw").unwrap();
-                let struct_ptr_raw = self.get_call_res(call).into_pointer_value();
-                let new_inst_ptr_int = self.builder.build_ptr_to_int(struct_ptr_raw, self.context.i64_type(), "new_inst_ptr").unwrap();
-                for (i, val) in members.into_iter().enumerate() {
-                    let member_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(i as u64, false)], "member_ptr").unwrap() };
-                    self.builder.build_store(member_ptr, val).unwrap();
-                }
+                let (struct_ptr_raw, new_inst_ptr_int) = self.gen_soa_alloc(count, fields.len());
 
                 let mut field_idx = 0;
                 for (idx, f) in fields.iter().enumerate() { if f == field_name { field_idx = idx + 1; break; } }
-                let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int(field_idx as u64, false)], "col_ptr_ptr").unwrap() };
-                let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
-                let col_ptr_int = self.as_int(col_ptr_int_val);
-                let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
-
-                let new_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(field_idx as u64, false)], "new_col_ptr_ptr").unwrap() };
-                let new_col_ptr_int_val = self.builder.build_load(self.context.i64_type(), new_col_ptr_ptr, "new_col_ptr_int").unwrap();
-                let new_col_ptr_int = self.as_int(new_col_ptr_int_val);
-                let new_col_ptr = self.builder.build_int_to_ptr(new_col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "new_col_ptr").unwrap();
+                let (col_ptr, col_ptr_int) = self.gen_soa_col_ptr(inst_ptr, field_idx as u64);
+                let (new_col_ptr, new_col_ptr_int) = self.gen_soa_col_ptr(struct_ptr_raw, field_idx as u64);
 
                 // OpenCL Dynamic execution translation
                 let ocl_kernel_src = if let Expr::Identifier(ref name) = **func_expr {
@@ -820,11 +710,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_conditional_branch(cond, loop_body_bb, cpu_map_end_bb).unwrap();
 
                 self.builder.position_at_end(loop_body_bb);
-                let old_val_load = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), col_ptr, &[i], "gep").unwrap() }, "old_val").unwrap();
-                if let Some(inst) = old_val_load.as_instruction_value() {
-                    inst.set_alignment(8).unwrap();
-                }
-                let old_val = old_val_load;
+                let old_val = self.gen_soa_elem_load(self.context.i64_type().into(), col_ptr, i);
                 let res_val = if let Expr::Identifier(ref name) = **func_expr {
                     let resolved = self.resolve_func_name(name);
                     let function = self.module.get_function(&resolved).expect("E010");
@@ -832,8 +718,7 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     old_val
                 };
-                let map_store = self.builder.build_store(unsafe { self.builder.build_gep(self.context.i64_type(), new_col_ptr, &[i], "gep").unwrap() }, res_val).unwrap();
-                map_store.set_alignment(8).unwrap();
+                self.gen_soa_elem_store(self.context.i64_type().into(), new_col_ptr, i, res_val);
                 self.builder.build_store(i_ptr, self.builder.build_int_add(i, self.context.i64_type().const_int(1, false), "next_i").unwrap()).unwrap();
                 self.builder.build_unconditional_branch(loop_bb).unwrap();
 
@@ -860,21 +745,10 @@ impl<'ctx> CodeGen<'ctx> {
                     for (idx, _) in fields.iter().enumerate() {
                         let current_idx = idx + 1;
                         if current_idx != field_idx {
-                            let src_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int(current_idx as u64, false)], "src_col").unwrap() };
-                            let src_col_int_val = self.builder.build_load(self.context.i64_type(), src_col_ptr_ptr, "src_val").unwrap();
-                            let src_col_int = self.as_int(src_col_int_val);
-                            let src_col = self.builder.build_int_to_ptr(src_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "src_ptr").unwrap();
-                            let val_load = self.builder.build_load(self.context.i64_type(), unsafe { self.builder.build_gep(self.context.i64_type(), src_col, &[ic], "gep").unwrap() }, "v").unwrap();
-                            if let Some(inst) = val_load.as_instruction_value() {
-                                inst.set_alignment(8).unwrap();
-                            }
-                            let val = val_load;
-                            let dst_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(current_idx as u64, false)], "dst_col").unwrap() };
-                            let dst_col_int_val = self.builder.build_load(self.context.i64_type(), dst_col_ptr_ptr, "dst_val").unwrap();
-                            let dst_col_int = self.as_int(dst_col_int_val);
-                            let dst_col = self.builder.build_int_to_ptr(dst_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "dst_ptr").unwrap();
-                            let copy_store = self.builder.build_store(unsafe { self.builder.build_gep(self.context.i64_type(), dst_col, &[ic], "gep").unwrap() }, val).unwrap();
-                            copy_store.set_alignment(8).unwrap();
+                            let (src_col, _) = self.gen_soa_col_ptr(inst_ptr, current_idx as u64);
+                            let val = self.gen_soa_elem_load(self.context.i64_type().into(), src_col, ic);
+                            let (dst_col, _) = self.gen_soa_col_ptr(struct_ptr_raw, current_idx as u64);
+                            self.gen_soa_elem_store(self.context.i64_type().into(), dst_col, ic, val);
                         }
                     }
                     self.builder.build_store(i_ptr_copy, self.builder.build_int_add(ic, self.context.i64_type().const_int(1, false), "next_ic").unwrap()).unwrap();
@@ -910,31 +784,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let count_body_bb = self.context.append_basic_block(parent_func, "filter_count_body");
                 self.builder.build_conditional_branch(cond, count_body_bb, count_after_bb).unwrap();
                 self.builder.position_at_end(count_body_bb);
-                let mut row_vals: Vec<BasicValueEnum<'ctx>> = Vec::new();
-                for (idx, field_type_name) in fields.iter().enumerate() {
-                    let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int((idx + 1) as u64, false)], "col_ptr_ptr").unwrap() };
-                    let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
-                    let col_ptr_int = self.as_int(col_ptr_int_val);
-                    let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
-                    let llvm_type = self.get_llvm_type(field_type_name);
-                    let val_load = self.builder.build_load(llvm_type, unsafe { self.builder.build_gep(llvm_type, col_ptr, &[i], "gep").unwrap() }, "v").unwrap();
-                    if let Some(inst) = val_load.as_instruction_value() {
-                        inst.set_alignment(8).unwrap();
-                    }
-                    let val = val_load;
-                    row_vals.push(val);
-                }
-                let matched = if let Expr::Identifier(ref name) = **func_expr {
-                    let resolved = self.resolve_func_name(name);
-                    let function = self.module.get_function(&resolved).expect("E010");
-                    let mut meta_vals = Vec::new();
-                    for v in &row_vals { meta_vals.push((*v).into()); }
-                    let res_val = self.get_call_res(self.builder.build_call(function, &meta_vals, "pred").unwrap());
-                    let res = self.as_int(res_val);
-                    self.builder.build_int_compare(inkwell::IntPredicate::NE, res, self.context.i64_type().const_int(0, false), "is_matched").unwrap()
-                } else {
-                    self.context.bool_type().const_int(1, false)
-                };
+                let row_vals = self.gen_soa_row_load(inst_ptr, fields, i);
+                let matched = self.gen_soa_predicate(func_expr, &row_vals);
                 let cur_matching_val = self.builder.build_load(self.context.i64_type(), matching_count_ptr, "c").unwrap();
                 let cur_matching = self.as_int(cur_matching_val);
                 let inc = self.builder.build_int_z_extend(matched, self.context.i64_type(), "inc").unwrap();
@@ -944,27 +795,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.position_at_end(count_after_bb);
                 let final_matching_count_val = self.builder.build_load(self.context.i64_type(), matching_count_ptr, "final_c").unwrap();
                 let final_matching_count = self.as_int(final_matching_count_val);
-                let mut members: Vec<BasicValueEnum<'ctx>> = Vec::new();
-                members.push(final_matching_count.into());
-                for _field_type_name in fields {
-                    let size_bytes = self.builder.build_int_mul(final_matching_count, self.context.i64_type().const_int(8, false), "size").unwrap();
-                    let fn_type = self.context.ptr_type(inkwell::AddressSpace::default()).fn_type(&[self.context.i64_type().into()], false);
-                    let func = self.get_or_add_external_fn("llm_alloc", fn_type);
-                    let call = self.builder.build_call(func, &[size_bytes.into()], "col_ptr_raw").unwrap();
-                    let ptr_val = self.get_call_res(call);
-                    let ptr = self.builder.build_ptr_to_int(ptr_val.into_pointer_value(), self.context.i64_type(), "col_ptr").unwrap();
-                    members.push(ptr.into());
-                }
-                let struct_size = (members.len() as u64) * 8;
-                let fn_type = self.context.ptr_type(inkwell::AddressSpace::default()).fn_type(&[self.context.i64_type().into()], false);
-                let func = self.get_or_add_external_fn("llm_alloc", fn_type);
-                let call = self.builder.build_call(func, &[self.context.i64_type().const_int(struct_size, false).into()], "struct_ptr_raw").unwrap();
-                let struct_ptr_raw = self.get_call_res(call).into_pointer_value();
-                let new_inst_ptr_int = self.builder.build_ptr_to_int(struct_ptr_raw, self.context.i64_type(), "new_inst_ptr").unwrap();
-                for (idx, val) in members.into_iter().enumerate() {
-                    let member_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int(idx as u64, false)], "member_ptr").unwrap() };
-                    self.builder.build_store(member_ptr, val).unwrap();
-                }
+                let (struct_ptr_raw, new_inst_ptr_int) = self.gen_soa_alloc(final_matching_count, fields.len());
                 let copy_loop_bb = self.context.append_basic_block(parent_func, "filter_copy_loop");
                 let copy_after_bb = self.context.append_basic_block(parent_func, "after_filter_copy");
                 let next_dst_idx_ptr = self.builder.build_alloca(self.context.i64_type(), "dst_idx").unwrap();
@@ -978,31 +809,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let copy_body_bb = self.context.append_basic_block(parent_func, "filter_copy_body");
                 self.builder.build_conditional_branch(cond2, copy_body_bb, copy_after_bb).unwrap();
                 self.builder.position_at_end(copy_body_bb);
-                let mut row_vals2: Vec<BasicValueEnum<'ctx>> = Vec::new();
-                for (idx, field_type_name) in fields.iter().enumerate() {
-                    let col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), inst_ptr, &[self.context.i64_type().const_int((idx + 1) as u64, false)], "col_ptr_ptr").unwrap() };
-                    let col_ptr_int_val = self.builder.build_load(self.context.i64_type(), col_ptr_ptr, "col_ptr_int").unwrap();
-                    let col_ptr_int = self.as_int(col_ptr_int_val);
-                    let col_ptr = self.builder.build_int_to_ptr(col_ptr_int, self.context.ptr_type(inkwell::AddressSpace::default()), "col_ptr").unwrap();
-                    let llvm_type = self.get_llvm_type(field_type_name);
-                    let val_load = self.builder.build_load(llvm_type, unsafe { self.builder.build_gep(llvm_type, col_ptr, &[i2], "gep").unwrap() }, "v").unwrap();
-                    if let Some(inst) = val_load.as_instruction_value() {
-                        inst.set_alignment(8).unwrap();
-                    }
-                    let val = val_load;
-                    row_vals2.push(val);
-                }
-                let matched2 = if let Expr::Identifier(ref name) = **func_expr {
-                    let resolved = self.resolve_func_name(name);
-                    let function = self.module.get_function(&resolved).expect("E010");
-                    let mut meta_vals = Vec::new();
-                    for v in &row_vals2 { meta_vals.push((*v).into()); }
-                    let res_val = self.get_call_res(self.builder.build_call(function, &meta_vals, "pred").unwrap());
-                    let res = self.as_int(res_val);
-                    self.builder.build_int_compare(inkwell::IntPredicate::NE, res, self.context.i64_type().const_int(0, false), "is_matched").unwrap()
-                } else {
-                    self.context.bool_type().const_int(1, false)
-                };
+                let row_vals2 = self.gen_soa_row_load(inst_ptr, fields, i2);
+                let matched2 = self.gen_soa_predicate(func_expr, &row_vals2);
                 let then_copy_bb = self.context.append_basic_block(parent_func, "then_copy");
                 let end_copy_bb = self.context.append_basic_block(parent_func, "end_copy");
                 self.builder.build_conditional_branch(matched2, then_copy_bb, end_copy_bb).unwrap();
@@ -1010,13 +818,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let dst_idx_val = self.builder.build_load(self.context.i64_type(), next_dst_idx_ptr, "d").unwrap();
                 let dst_idx = self.as_int(dst_idx_val);
                 for (idx, _) in fields.iter().enumerate() {
-                    let dst_col_ptr_ptr = unsafe { self.builder.build_gep(self.context.i64_type(), struct_ptr_raw, &[self.context.i64_type().const_int((idx + 1) as u64, false)], "dst_col").unwrap() };
-                    let dst_col_int_val = self.builder.build_load(self.context.i64_type(), dst_col_ptr_ptr, "dst_val").unwrap();
-                    let dst_col_int = self.as_int(dst_col_int_val);
-                    let dst_col = self.builder.build_int_to_ptr(dst_col_int, self.context.ptr_type(inkwell::AddressSpace::default()), "dst_ptr").unwrap();
+                    let (dst_col, _) = self.gen_soa_col_ptr(struct_ptr_raw, (idx + 1) as u64);
                     let llvm_type = self.get_llvm_type(&fields[idx]);
-                    let filter_store = self.builder.build_store(unsafe { self.builder.build_gep(llvm_type, dst_col, &[dst_idx], "gep").unwrap() }, row_vals2[idx]).unwrap();
-                    filter_store.set_alignment(8).unwrap();
+                    self.gen_soa_elem_store(llvm_type, dst_col, dst_idx, row_vals2[idx]);
                 }
                 self.builder.build_store(next_dst_idx_ptr, self.builder.build_int_add(dst_idx, self.context.i64_type().const_int(1, false), "next_d").unwrap()).unwrap();
                 self.builder.build_unconditional_branch(end_copy_bb).unwrap();
